@@ -14,7 +14,7 @@ export ARCH=arm
 mv .git .git-halt
 
 cd $KERNELDIR/
-make -j4 || exit 1
+make -j2 || exit 1
 
 mkdir -p $KERNELDIR/BUILT_I9305/lib/modules
 

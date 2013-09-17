@@ -1,7 +1,7 @@
 #!/bin/sh
 export KERNELDIR=`readlink -f .`
 . ~/AGNi_stamp_CM.sh
-. ~/gcc_4.4.3.sh
+. ~/gcc_4.7.2_armv7l.sh
 
 mv .git .git-halt
 
@@ -16,11 +16,11 @@ fi
 
 echo "BEGINING KERNEL COMPILATION .........."
 cd $KERNELDIR/
-make -j3 || exit 1
+make -j2 || exit 1
 
 mkdir -p $KERNELDIR/BUILT-P3100/lib/modules
 rm $KERNELDIR/BUILT-P3100/lib/modules/*
-rm $KERNELDIR/BUILT-P3100/
+rm $KERNELDIR/BUILT-P3100/zImage
 
 echo "BEGINING SGX540 PVR KM COMPILATION ..........."
 cd $KERNELDIR/pvr_source/eurasiacon/build/linux2/omap4430_android

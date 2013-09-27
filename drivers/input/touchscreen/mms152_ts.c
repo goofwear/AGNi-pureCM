@@ -4179,10 +4179,11 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 #endif
 
 #ifdef CONFIG_TOUCH_WAKE
+static struct mms_ts_info * touchwake_data;
   touchwake_data = info;
     if (touchwake_data == NULL)
     pr_err("[TOUCHWAKE] Failed to set touchwake_data\n");
-#endif  
+#endif
 
 #ifdef CONFIG_INPUT_FBSUSPEND
 	ret = tsp_register_fb(info);
@@ -4349,7 +4350,6 @@ static void mms_ts_late_resume(struct early_suspend *h)
 #endif
 
 #ifdef CONFIG_TOUCH_WAKE
-static struct mms_ts_info * touchwake_data;
 void touchscreen_disable(void)
 {
   if (likely(touchwake_data != NULL))

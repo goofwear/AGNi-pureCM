@@ -314,7 +314,6 @@ static ssize_t usage_show(struct device *dev,
 	return sprintf(buf, "%d\n", atomic_read(&lcdfreq->usage));
 }
 
-#if 0
 static ssize_t freq_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -360,7 +359,6 @@ static ssize_t freq_store(struct device *dev,
 }
 
 static DEVICE_ATTR(freq, S_IRUGO|S_IWUSR, freq_show, freq_store);
-#endif
 
 static DEVICE_ATTR(level, S_IRUGO|S_IWUSR, level_show, level_store);
 static DEVICE_ATTR(usage, S_IRUGO, usage_show, NULL);
@@ -368,7 +366,10 @@ static DEVICE_ATTR(usage, S_IRUGO, usage_show, NULL);
 static struct attribute *lcdfreq_attributes[] = {
 	&dev_attr_level.attr,
 	&dev_attr_usage.attr,
-/*	&dev_attr_freq.attr, */
+	&dev_attr_freq.attr,
+#ifdef CONFIG_LCD_FREQ_SWITCH_ACCOUNTING
+	&dev_attr_time_in_state.attr,
+#endif
 	NULL,
 };
 

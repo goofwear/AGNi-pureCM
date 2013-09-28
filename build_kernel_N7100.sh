@@ -7,7 +7,7 @@ export ARCH=arm
 
 if [ ! -f $KERNELDIR/.config ];
 then
-   make defconfig cyanogenmod_n7100_defconfig
+   make defconfig psn_n7100_v2.3.3d_defconfig
 fi
 
 . $KERNELDIR/.config

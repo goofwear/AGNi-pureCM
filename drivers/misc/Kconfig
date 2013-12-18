@@ -744,7 +744,7 @@ config TOUCH_WAKE
 
 config AGNI_OMNI_MODE
 	bool "AGNi OMNI-type MODE: vibrator, hardware keys, backlight to sysfs"
-	default y
+	default n
 	help
 		Say Y here to enable AGNi OMNI-type MODE
 		(DEVIATES FROM OFFICIAL CYANOGENMOD IMPLEMENTATION)

@@ -260,11 +260,7 @@ void vibtonz_pwm(int nForce)
 EXPORT_SYMBOL(vibtonz_pwm);
 #endif
 
-#ifdef CONFIG_AGNI_OMNI_MODE
 static ssize_t pwm_val_show(struct device *dev,
-#else
-static ssize_t pwm_value_show(struct device *dev,
-#endif
 		struct device_attribute *attr, char *buf)
 {
 	int count;
@@ -277,22 +273,14 @@ static ssize_t pwm_value_show(struct device *dev,
 	return count;
 }
 
-#ifdef CONFIG_AGNI_OMNI_MODE
 ssize_t pwm_val_store(struct device *dev,
-#else
-ssize_t pwm_value_store(struct device *dev,
-#endif
 		struct device_attribute *attr,
 		const char *buf, size_t size)
 {
 	if (kstrtoul(buf, 0, &pwm_val))
 		pr_err("[VIB] %s: error on storing pwm_val\n", __func__); 
 
-#ifdef CONFIG_AGNI_OMNI_MODE
     pr_info("[VIB] %s: pwm_val=%lu\n", __func__, pwm_val);
-#else
-    pr_info("[VIB] %s: pwm_value=%lu\n", __func__, pwm_val);
-#endif
 
     pwm_duty = (pwm_val * 18525) / 100 + 18525;
 
@@ -310,15 +298,8 @@ ssize_t pwm_value_store(struct device *dev,
 
 	return size;
 }
-
-#ifdef CONFIG_AGNI_OMNI_MODE
 static DEVICE_ATTR(pwm_val, S_IRUGO | S_IWUSR,
 		pwm_val_show, pwm_val_store);
-#else
-static DEVICE_ATTR(pwm_value, S_IRUGO | S_IWUSR,
-		pwm_value_show, pwm_value_store);
-#endif
-
 
 #ifdef CONFIG_AGNI_OMNI_MODE
 static int create_vibrator_sysfs(void)

@@ -401,3 +401,4 @@ config SND_WOLFSON_SOUND_CONTROL
 	depends on SND_SOC_WM8994
 
 source "sound/soc/codecs/mc1n2/Kconfig"
+source "sound/soc/codecs/ymu831/Kconfig"

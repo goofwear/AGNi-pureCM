@@ -46,6 +46,7 @@
 #define SEC_THRESHOLD 1
 
 #define CPUFREQ_LOCK_DURING_440 0
+#define CHIPID_REG		(S5P_VA_CHIPID + 0x4)
 
 static int bMaliDvfsRun = 0;
 static int needs_update = 0;
@@ -550,6 +551,9 @@ void mali_clk_set_rate(unsigned int clk, unsigned int mhz)
 		clk_set_rate(mali_clock, 160000000);
 
 		clk_set_rate(fout_vpll_clock, (unsigned int)clk * GPU_MHZ);
+		clk_set_parent(vpll_src_clock, ext_xtal_clock);
+		clk_set_parent(sclk_vpll_clock, fout_vpll_clock);
+
 		clk_set_parent(mali_parent_clock, sclk_vpll_clock);
 		clk_set_parent(mali_clock, mali_parent_clock);
 	}

@@ -283,16 +283,16 @@ out:
 	return ERR_PTR(err);
 }
 
-/* 
+/*
  * On success:
- * 	fills dentry object appropriate values and returns NULL. 
+ * 	fills dentry object appropriate values and returns NULL.
  * On fail (== error)
  * 	returns error ptr
  *
  * @dir : Parent inode. It is locked (dir->i_mutex)
  * @dentry : Target dentry to lookup. we should set each of fields.
  *	     (dentry->d_name is initialized already)
- * @nd : nameidata of parent inode 
+ * @nd : nameidata of parent inode
  */
 struct dentry *sdcardfs_lookup(struct inode *dir, struct dentry *dentry,
 			     struct nameidata *nd)
@@ -316,7 +316,7 @@ struct dentry *sdcardfs_lookup(struct inode *dir, struct dentry *dentry,
 	ret = __sdcardfs_lookup(dentry, nd, &lower_parent_path);
 	if (IS_ERR(ret))
 		goto out;
-	if (ret) 
+	if (ret)
 		dentry = ret;
 	if (dentry->d_inode)
 		fsstack_copy_attr_times(dentry->d_inode,

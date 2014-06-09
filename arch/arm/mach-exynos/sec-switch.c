@@ -326,14 +326,13 @@ void max77693_muic_usb_cb(u8 usb_mode)
 	if (usb_mode == USB_OTGHOST_ATTACHED
 		|| usb_mode == USB_POWERED_HOST_ATTACHED) {
 #ifdef CONFIG_USB_HOST_NOTIFY
-		if (usb_mode == USB_OTGHOST_ATTACHED)
+		if (usb_mode == USB_OTGHOST_ATTACHED) {
 			host_noti_pdata->booster(1);
-		else
+			host_noti_pdata->ndev.mode = NOTIFY_HOST_MODE;
+			if (host_noti_pdata->usbhostd_start)
+				host_noti_pdata->usbhostd_start();
+		} else
 			host_noti_pdata->powered_booster(1);
-
-		host_noti_pdata->ndev.mode = NOTIFY_HOST_MODE;
-		if (host_noti_pdata->usbhostd_start)
-			host_noti_pdata->usbhostd_start();
 #endif
 #ifdef CONFIG_USB_EHCI_S5P
 		pm_runtime_get_sync(&s5p_device_ehci.dev);
@@ -350,11 +349,12 @@ void max77693_muic_usb_cb(u8 usb_mode)
 		pm_runtime_put_sync(&s5p_device_ehci.dev);
 #endif
 #ifdef CONFIG_USB_HOST_NOTIFY
-		host_noti_pdata->ndev.mode = NOTIFY_NONE_MODE;
-		if (host_noti_pdata->usbhostd_stop)
-			host_noti_pdata->usbhostd_stop();
-		if (usb_mode == USB_OTGHOST_DETACHED)
+		if (usb_mode == USB_OTGHOST_DETACHED) {
+			host_noti_pdata->ndev.mode = NOTIFY_NONE_MODE;
+			if (host_noti_pdata->usbhostd_stop)
+				host_noti_pdata->usbhostd_stop();
 			host_noti_pdata->booster(0);
+		}
 		else
 			host_noti_pdata->powered_booster(0);
 #endif
@@ -452,8 +452,7 @@ void max77693_muic_init_cb(void)
 }
 
 #if !defined(CONFIG_MACH_GC1) && !defined(CONFIG_MACH_T0) && \
-!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE) && \
-!defined(CONFIG_MACH_KONA)
+!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE)
 int max77693_muic_cfg_uart_gpio(void)
 {
 	int uart_val, path;
@@ -473,8 +472,7 @@ int max77693_muic_cfg_uart_gpio(void)
 #endif
 
 #if !defined(CONFIG_MACH_GC1) && !defined(CONFIG_MACH_T0) && \
-!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE) && \
-!defined(CONFIG_MACH_KONA)
+!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE)
 void max77693_muic_jig_uart_cb(int path)
 {
 	pr_info("func:%s : (path=%d\n", __func__, path);
@@ -585,8 +583,7 @@ struct max77693_muic_data max77693_muic = {
 	.init_cb = max77693_muic_init_cb,
 	.dock_cb = max77693_muic_dock_cb,
 #if !defined(CONFIG_MACH_GC1) && !defined(CONFIG_MACH_T0) && \
-!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE) && \
-	!defined(CONFIG_MACH_KONA)
+!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE)
 	.cfg_uart_gpio = max77693_muic_cfg_uart_gpio,
 	.jig_uart_cb = max77693_muic_jig_uart_cb,
 #endif /* CONFIG_MACH_GC1 */
@@ -600,8 +597,7 @@ struct max77693_muic_data max77693_muic = {
 	.host_notify_cb = NULL,
 #endif
 #if !defined(CONFIG_MACH_GC1) && !defined(CONFIG_MACH_T0) && \
-!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE) && \
-	!defined(CONFIG_MACH_KONA)
+!defined(CONFIG_MACH_M3) && !defined(CONFIG_MACH_SLP_T0_LTE)
 	.gpio_usb_sel = GPIO_USB_SEL,
 #else
 	.gpio_usb_sel = -1,

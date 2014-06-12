@@ -487,7 +487,11 @@ static struct s3cfb_lcd s6e8aa0 = {
 
 	.freq = 60,
 #if defined(CONFIG_S6E8AA0_AMS480GYXX)
+#if defined(CONFIG_MACH_M3_JPN_DCM)
+	.freq_limit = 43,
+#else
 	.freq_limit = 40,
+#endif
 #endif
 
 	/* minumun value is 0 except for wr_act time. */
@@ -499,9 +503,21 @@ static struct s3cfb_lcd s6e8aa0 = {
 	},
 
 	.timing = {
+#if defined(CONFIG_MACH_M3_JPN_DCM)
+		.h_fp = 15,
+#else
 		.h_fp = 5,
+#endif		
+#if defined(CONFIG_MACH_M3_JPN_DCM)
+		.h_bp = 10,
+#else
 		.h_bp = 5,
+#endif
+#if defined(CONFIG_MACH_M3_JPN_DCM)
+		.h_sw = 10,
+#else
 		.h_sw = 5,
+#endif
 		.v_fp = 13,
 		.v_fpe = 1,
 		.v_bp = 1,
@@ -529,7 +545,7 @@ static struct s3cfb_lcd ea8061 = {
 	.p_width = 74,
 	.p_height = 131,
 	.bpp = 24,
-	.freq = 58,
+	.freq = 60,
 
 	/* minumun value is 0 except for wr_act time. */
 	.cpu_timing = {
@@ -541,7 +557,7 @@ static struct s3cfb_lcd ea8061 = {
 
 	.timing = {
 		.h_fp = 52,
-		.h_bp = 121,
+		.h_bp = 96,
 		.h_sw = 4,
 		.v_fp = 13,
 		.v_fpe = 1,
@@ -609,7 +625,7 @@ static struct s3cfb_lcd ea8061 = {
 	.p_width = 64,
 	.p_height = 106,
 	.bpp = 24,
-	.freq = 58,
+	.freq = 60,
 
 	/* minumun value is 0 except for wr_act time. */
 	.cpu_timing = {
@@ -621,7 +637,7 @@ static struct s3cfb_lcd ea8061 = {
 
 	.timing = {
 		.h_fp = 52,
-		.h_bp = 121,
+		.h_bp = 96,
 		.h_sw = 4,
 		.v_fp = 13,
 		.v_fpe = 1,
@@ -872,7 +888,6 @@ static int reset_lcd(void)
 static void lcd_cfg_gpio(void)
 {
 #if defined(GPIO_MLCD_RST)
-
 	/* MLCD_RST */
 	s3c_gpio_cfgpin(GPIO_MLCD_RST, S3C_GPIO_OUTPUT);
 	s3c_gpio_setpull(GPIO_MLCD_RST, S3C_GPIO_PULL_NONE);

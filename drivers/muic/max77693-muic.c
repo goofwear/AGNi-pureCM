@@ -41,12 +41,6 @@
 #include <linux/delay.h>
 
 #define DEV_NAME	"max77693-muic"
-#if defined(CONFIG_MACH_IRON) || \
-	defined(CONFIG_MACH_GRANDE) || \
-	defined(CONFIG_MACH_T0_CHN_CTC) || \
-	defined(CONFIG_MACH_M0_DUOSCTC)
-#define REGARD_442K_AS_523K
-#endif
 
 #if defined(CONFIG_MACH_IRON) || \
 	defined(CONFIG_MACH_GRANDE) || \
@@ -375,67 +369,6 @@ static int max77693_muic_get_uart_path_pass2
 	} else {
 		return -EINVAL;
 	}
-}
-#endif
-
-#if defined(REGARD_442K_AS_523K)
-static void max77693_muic_force_uart_switch(int uart_path)
-{
-	u8 ctrl1_mask, ctrl1_val;
-	u8 ctrl2_val;
-	u8 gpio_uart_sel = 0;
-
-	switch (uart_path)	{
-	case UART_PATH_CP:
-		/* Switch UART path to MASTER (PMB9811C, infinion) */
-		pr_info("[%s] Force UART path switch to CP (infi)\n",
-				__func__);
-		ctrl1_val =
-			(MAX77693_MUIC_CTRL1_BIN_5_101<<COMN1SW_SHIFT) |
-			(MAX77693_MUIC_CTRL1_BIN_5_101<<COMP2SW_SHIFT);
-		ctrl1_mask = COMN1SW_MASK | COMP2SW_MASK;
-		gpio_uart_sel = GPIO_LEVEL_LOW;
-		break;
-	case UART_PATH_CP_ESC:
-		/* Switch UART path to SLAVE (ESC6270, qualcomm) */
-		pr_info("[%s] Force UART path switch to CP (esc)\n",
-				__func__);
-		ctrl1_val =
-			(MAX77693_MUIC_CTRL1_BIN_5_101<<COMN1SW_SHIFT) |
-			(MAX77693_MUIC_CTRL1_BIN_5_101<<COMP2SW_SHIFT);
-		ctrl1_mask = COMN1SW_MASK | COMP2SW_MASK;
-		gpio_uart_sel = GPIO_LEVEL_HIGH;
-		break;
-	case UART_PATH_AP:
-		/* Switch UART path to AP */
-		pr_info("[%s] Force UART path switch to AP\n",
-				__func__);
-		ctrl1_val =
-			(MAX77693_MUIC_CTRL1_BIN_3_011<<COMN1SW_SHIFT) |
-			(MAX77693_MUIC_CTRL1_BIN_3_011<<COMP2SW_SHIFT);
-		ctrl1_mask = COMN1SW_MASK | COMP2SW_MASK;
-		break;
-	default:
-		pr_info("[%s] wrong uart_path, return\n", __func__);
-		return;
-		break;
-	}
-
-	max77693_update_reg(gInfo->muic, MAX77693_MUIC_REG_CTRL1,
-						ctrl1_val, ctrl1_mask);
-	max77693_update_reg(gInfo->muic,
-					MAX77693_MUIC_REG_CTRL2,
-					0 << CTRL2_ACCDET_SHIFT,
-					CTRL2_ACCDET_MASK);
-	max77693_read_reg(gInfo->muic, MAX77693_MUIC_REG_CTRL1, &ctrl1_val);
-	max77693_read_reg(gInfo->muic, MAX77693_MUIC_REG_CTRL2, &ctrl2_val);
-	pr_info("[%s] REG_CTRL1=0x%x, REG_CTRL2=0x%x\n",
-			__func__, ctrl1_val, ctrl2_val);
-	if (uart_path != UART_PATH_AP)
-		gpio_set_value(GPIO_UART_SEL, gpio_uart_sel);
-	pr_info("[%s] GPIO_UART_SEL(%d)\n",
-			__func__, gpio_get_value(GPIO_UART_SEL));
-
 }
 #endif
 

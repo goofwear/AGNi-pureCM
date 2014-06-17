@@ -23,9 +23,6 @@
 #ifdef CONFIG_ZRAM_FOR_ANDROID
 #include <asm/atomic.h>
 #endif /* CONFIG_ZRAM_FOR_ANDROID */
-#ifdef CONFIG_FAST_BOOT
-#include <linux/fake_shut_down.h>
-#endif
 
 #include "power.h"
 
@@ -219,12 +216,8 @@ void request_suspend_state(suspend_state_t new_state)
 		queue_work(suspend_work_queue, &early_suspend_work);
 	} else if (old_sleep && new_state == PM_SUSPEND_ON) {
 #ifdef CONFIG_FAST_BOOT
-		if (fake_shut_down) {
-			pr_info("%s : end of fake shut down\n", __func__);
+		if (fake_shut_down)
 			fake_shut_down = false;
-			raw_notifier_call_chain(&fsd_notifier_list,
-					FAKE_SHUT_DOWN_CMD_OFF, NULL);
-		}
 #endif
 		state &= ~SUSPEND_REQUESTED;
 		wake_lock(&main_wake_lock);

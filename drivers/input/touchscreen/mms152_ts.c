@@ -175,7 +175,8 @@ int touch_is_pressed;
 #define ISC_DL_MODE	1
 
 /* 5.55" OCTA LCD */
-#define FW_VERSION 0x70
+#define FW_VERSION_L 0x29
+#define FW_VERSION_M 0x50
 #define MAX_FW_PATH 255
 #define TSP_FW_FILENAME "melfas_fw.bin"
 
@@ -286,8 +287,6 @@ struct tISCFWInfo_t {
 	unsigned char compatible_version;
 	unsigned char start_addr;
 	unsigned char end_addr;
-	int bin_offset;
-	u32 crc;
 };
 
 static struct tISCFWInfo_t mbin_info[SECTION_NUM];
@@ -1272,12 +1271,9 @@ static int mms100_seek_section_info(void)
 	char name_buf[SECTION_NAME_LEN];
 	int version;
 	int page_num;
-	int offset[SECTION_NUM] = {0x03f0, 0x53f0 - 0x0400, 0x7bf0 - 0x5400};
+
 	const unsigned char *buf;
 	int next_ptr;
-	char *bin_header = "[Binary]";
-	int cnt = strlen(bin_header);
-	int j;
 
 	for (i = 0; i < SECTION_NUM; i++) {
 		if (fw_mbin[i] == NULL) {
@@ -1297,71 +1293,54 @@ static int mms100_seek_section_info(void)
 			next_ptr = 0;
 
 			do {
-				sscanf(buf + next_ptr, "%99s", str_buf);
+				sscanf(buf + next_ptr, "%s", str_buf);
 				next_ptr += strlen(str_buf) + 1;
 			} while (!strstr(str_buf, "SECTION_NAME"));
 
-			sscanf(buf + next_ptr, "%99s%4s", str_buf, name_buf);
+			sscanf(buf + next_ptr, "%s%s", str_buf, name_buf);
 
 			if (strncmp(section_name[i], name_buf,
 				SECTION_NAME_LEN))
 				return ISC_FILE_FORMAT_ERROR;
 
 			do {
-				sscanf(buf + next_ptr, "%99s", str_buf);
+				sscanf(buf + next_ptr, "%s", str_buf);
 				next_ptr += strlen(str_buf) + 1;
 			} while (!strstr(str_buf, "SECTION_VERSION"));
 
-			sscanf(buf + next_ptr, "%99s%d", str_buf, &version);
+			sscanf(buf + next_ptr, "%s%d", str_buf, &version);
 			mbin_info[i].version = ISC_CHAR_2_BCD(version);
 
 			do {
-				sscanf(buf + next_ptr, "%99s", str_buf);
+				sscanf(buf + next_ptr, "%s", str_buf);
 				next_ptr += strlen(str_buf) + 1;
 			} while (!strstr(str_buf, "START_PAGE_ADDR"));
 
-			sscanf(buf + next_ptr, "%99s%d", str_buf, &page_num);
+			sscanf(buf + next_ptr, "%s%d", str_buf, &page_num);
 			mbin_info[i].start_addr = page_num;
 
 			do {
-				sscanf(buf + next_ptr, "%99s", str_buf);
+				sscanf(buf + next_ptr, "%s", str_buf);
 				next_ptr += strlen(str_buf) + 1;
 			} while (!strstr(str_buf, "END_PAGE_ADDR"));
 
-			sscanf(buf + next_ptr, "%99s%d", str_buf, &page_num);
+			sscanf(buf + next_ptr, "%s%d", str_buf, &page_num);
 			mbin_info[i].end_addr = page_num;
 
 			do {
-				sscanf(buf + next_ptr, "%99s", str_buf);
+				sscanf(buf + next_ptr, "%s", str_buf);
 				next_ptr += strlen(str_buf) + 1;
 			} while (!strstr(str_buf, "COMPATIBLE_VERSION"));
 
-			sscanf(buf + next_ptr, "%99s%d", str_buf, &version);
+			sscanf(buf + next_ptr, "%s%d", str_buf, &version);
 			mbin_info[i].compatible_version =
 				ISC_CHAR_2_BCD(version);
-#if 0
+
 			do {
 				sscanf(buf + next_ptr, "%s", str_buf);
 				next_ptr += strlen(str_buf) + 1;
 			} while (!strstr(str_buf, "[Binary]"));
-#else
 
-			for (j = 0; j < cnt;) {
-				if (*(buf + next_ptr) == bin_header[j])
-					j++;
-				else
-					j = 0;
-
-				next_ptr++;
-			}
-
-			next_ptr++;
-
-			mbin_info[i].bin_offset = next_ptr;
-
-			mbin_info[i].crc =
-				get_unaligned_le32(buf + next_ptr + offset[i]);
-#endif
 			if (mbin_info[i].version == 0xFF)
 				return ISC_FILE_FORMAT_ERROR;
 		}
@@ -1376,15 +1355,12 @@ static int mms100_seek_section_info(void)
 			i, mbin_info[i].end_addr);
 		pr_info("[TSP ISC] MBin : Section(%d) Compatibility: 0x%02X\n",
 			i, mbin_info[i].compatible_version);
-		pr_info("[TSP ISC] MBin : Section(%d) CRC: 0x%02X\n",
-			i, mbin_info[i].crc);
 	}
 
 	return ISC_SUCCESS;
 }
 
-static int mms100_compare_version_info(struct i2c_client *_client,
-		bool force_config, bool force_all)
+static int mms100_compare_version_info(struct i2c_client *_client)
 {
 	int i, ret;
 	unsigned char expected_compatibility[SECTION_NUM];
@@ -1393,8 +1369,6 @@ static int mms100_compare_version_info(struct i2c_client *_client,
 		return ISC_I2C_ERROR;
 
 	ret = mms100_seek_section_info();
-	if (ret)
-		return ret;
 
 	/* Check update areas , 0 : bootloader 1: core 2: private 3: public */
 	for (i = 0; i < SECTION_NUM; i++) {
@@ -1406,13 +1380,6 @@ static int mms100_compare_version_info(struct i2c_client *_client,
 	}
 	section_update_flag[0] = false;
 	section_update_flag[1] = false;
-	if (force_config)
-		section_update_flag[2] = true;
-	if (force_all) {
-		section_update_flag[0] = true;
-		section_update_flag[1] = true;
-		section_update_flag[2] = true;
-	}
 	pr_info("[TSP ISC] [%d] [%d] [%d]", section_update_flag[0],
 		section_update_flag[1], section_update_flag[2]);
 
@@ -1471,7 +1438,7 @@ static int mms100_enter_ISC_mode(struct i2c_client *_client)
 		return ISC_I2C_ERROR;
 	}
 
-	msleep(150);
+	msleep(50);
 
 	return ISC_SUCCESS;
 }
@@ -1590,8 +1557,6 @@ static int mms100_ISC_clear_validate_markers(struct i2c_client *_client)
 		}
 	}
 
-	usleep_range(10000, 15000);
-
 	return ISC_SUCCESS;
 }
 
@@ -1658,9 +1623,7 @@ static int mms100_update_section_data(struct i2c_client *_client)
 	unsigned char rd_buf;
 	unsigned char crc[2];
 	const unsigned char *ptr_fw;
-#if 0
 	char str_buf[STRING_BUF_LEN];
-#endif
 	int page_addr;
 
 	for (i = 0; i < SECTION_NUM; i++) {
@@ -1668,7 +1631,7 @@ static int mms100_update_section_data(struct i2c_client *_client)
 			pr_info("[TSP ISC] section data i2c flash : [%d]", i);
 
 			ptr_fw = fw_mbin[i]->data;
-#if 0
+
 			do {
 				sscanf(ptr_fw, "%s", str_buf);
 				ptr_fw += strlen(str_buf) + 1;
@@ -1677,9 +1640,7 @@ static int mms100_update_section_data(struct i2c_client *_client)
 */
 			} while (!strstr(str_buf, "[Binary]"));
 			ptr_fw += 1;
-#else
-			ptr_fw += mbin_info[i].bin_offset;
-#endif
+
 			for (page_addr = mbin_info[i].start_addr;
 				page_addr <= mbin_info[i].end_addr;
 				page_addr++) {
@@ -1742,8 +1703,14 @@ static int mms100_open_mbinary(struct mms_ts_info *info)
 			"tsp_melfas/note/BOOT.fw", &_client->dev);
 	ret += request_firmware(&(fw_mbin[1]),\
 			"tsp_melfas/note/CORE.fw", &_client->dev);
-	ret += request_firmware(&(fw_mbin[2]),\
-			"tsp_melfas/note/CONF.fw", &_client->dev);
+	if (info->ldi == 'L') {
+		ret += request_firmware(&(fw_mbin[2]),\
+			"tsp_melfas/note/CONFL.fw", &_client->dev);
+	} else {
+		ret += request_firmware(&(fw_mbin[2]),\
+			"tsp_melfas/note/CONFM.fw", &_client->dev);
+	}
+
 	if (!ret)
 		return ISC_SUCCESS;
 	else {
@@ -1763,8 +1730,7 @@ static int mms100_close_mbinary(void)
 	return ISC_SUCCESS;
 }
 
-int mms100_ISC_download_mbinary(struct mms_ts_info *info,
-		bool force_config, bool force_all)
+int mms100_ISC_download_mbinary(struct mms_ts_info *info)
 {
 	struct i2c_client *_client = info->client;
 	int ret_msg = ISC_NONE;
@@ -1782,7 +1748,7 @@ int mms100_ISC_download_mbinary(struct mms_ts_info *info,
 		goto ISC_ERROR_HANDLE;
 
 	/*Config version Check*/
-	ret_msg = mms100_compare_version_info(_client, force_config, force_all);
+	ret_msg = mms100_compare_version_info(_client);
 	if (ret_msg != ISC_SUCCESS)
 		goto ISC_ERROR_HANDLE;
 
@@ -2139,56 +2105,6 @@ err:
 	return ret;
 }
 
-static int mms_flash_boot(struct mms_ts_info *info)
-{
-	struct i2c_client *client = info->client;
-	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
-	int ret = 0;
-	int retries = 3;
-	const u8 *buff = 0;
-	long fsize = 0;
-	const struct firmware *tsp_fw = NULL;
-
-	dev_info(&client->dev, "%s\n", __func__);
-
-	ret = request_firmware(&tsp_fw,
-		"tsp_melfas/note/mms_boot.fw", &(client->dev));
-	if (ret) {
-		dev_err(&client->dev, "request firmware error!!\n");
-		return 1;
-	}
-
-	fsize = tsp_fw->size;
-	buff = kzalloc((size_t)fsize, GFP_KERNEL);
-	if (!buff) {
-		dev_err(&client->dev, "fail to alloc buffer for fw\n");
-		info->cmd_state = 3;
-		release_firmware(tsp_fw);
-		return 1;
-	}
-
-	memcpy((void *)buff, tsp_fw->data, fsize);
-	release_firmware(tsp_fw);
-
-	while (retries--) {
-		i2c_lock_adapter(adapter);
-		info->pdata->mux_fw_flash(true);
-
-		ret = fw_download(info, (const u8 *)buff,
-				(const size_t)fsize);
-
-		info->pdata->mux_fw_flash(false);
-		i2c_unlock_adapter(adapter);
-
-		if (ret < 0)
-			dev_err(&client->dev, "retry flashing\n");
-		else
-			break;
-	}
-	kfree(buff);
-	return ret;
-}
-
 #if defined(SEC_TSP_ISC_FW_UPDATE)
 static u16 gen_crc(u8 data, u16 pre_crc)
 {
@@ -2317,7 +2233,7 @@ err_mem_alloc:
 }
 #endif /* SEC_TSP_ISC_FW_UPDATE */
 
-static unsigned char get_fw_version(struct mms_ts_info *info, u8 area)
+static int get_fw_version(struct mms_ts_info *info, u8 area)
 {
 	struct i2c_client *client = info->client;
 	struct i2c_adapter *adapter = client->adapter;
@@ -2405,92 +2321,69 @@ out:
 }
 */
 
-static int check_fw_status(struct mms_ts_info *info)
+static int mms_ts_fw_info(struct mms_ts_info *info)
 {
 	struct i2c_client *client = info->client;
-	int ret;
-	int size;
-	u32 pre_crc;
-	u32 test_crc;
-	u8 cmd, val;
-	int cnt = 30;
-	int gpio = info->pdata->gpio_int;
+	int ret = 0;
+	int ver;
 
-	cmd = 0xA0;
-	val = 0x02;
-	ret = i2c_smbus_write_byte_data(client, cmd, val);
-	if (ret)
-		goto out;
+	ver = get_fw_version(info, SEC_CONFIG);
+	info->fw_ic_ver = ver;
+		dev_info(&client->dev,
+			 "[TSP]fw version 0x%02x !!!!\n", ver);
 
-	size = i2c_smbus_read_byte_data(client, 0xAE);
-	if (size != 4) {
+	if (ver < 0) {
+		ret = 1;
 		dev_err(&client->dev,
-			"universial cmd size error. got %d, expected 4\n",
-			size);
-		goto out;
+			"i2c fail...tsp driver unload.\n");
+		return ret;
 	}
 
-	cmd = 0xAF;
-	ret = i2c_smbus_read_i2c_block_data(client, cmd, size, (u8 *)&pre_crc);
-	if (ret != size)
-		goto out;
-
-	dev_info(&client->dev, "pre_calced crc val : 0x%X", pre_crc);
-
-	val = 0x4E;
-	ret = i2c_smbus_write_byte_data(client, cmd, val);
-	if (ret)
-		goto out;
-
-	do {
-		usleep_range(1000, 1500);
-	} while (cnt-- && gpio_get_value(gpio));
-
-	if (cnt < 0)
-		dev_info(&client->dev, "intr timeout, forcing to read\n");
-
-	size = i2c_smbus_read_byte_data(client, 0xAE);
-	if (size != 4) {
+	if (!info->pdata || !info->pdata->mux_fw_flash) {
+		ret = 1;
 		dev_err(&client->dev,
-			"universial cmd size error. got %d, expected 4\n",
-			size);
-		goto out;
+			"fw cannot be updated, missing platform data\n");
+		return ret;
 	}
 
-	cmd = 0xAF;
-	ret = i2c_smbus_read_i2c_block_data(client, cmd, size, (u8 *)&test_crc);
-	if (ret != size)
-		goto out;
-
-	dev_info(&client->dev, "calced crc val : 0x%X", pre_crc);
-
-	return (pre_crc != test_crc);
-
-out:
-	dev_err(&client->dev, "failed to read crc data\n");
-	ret = -EIO;
 	return ret;
 }
 
-static int mms_ts_fw_load(struct mms_ts_info *info, bool force_config)
+static int mms_ts_fw_load(struct mms_ts_info *info, bool force, char ldi)
 {
 
 	struct i2c_client *client = info->client;
 	int ret = 0;
-	int bin_ver = FW_VERSION;
-	int retries = 4;
-	int fw_check = 0;
-	bool error = false;
-	u8 ver;
+	int ver;
+	int bin_ver;
+	int retries = 3;
 
-	info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
+	ver = get_fw_version(info, SEC_CONFIG);
+	info->fw_ic_ver = ver;
 	dev_info(&client->dev,
-		 "[TSP]fw version 0x%02x !!!!\n",
-		 info->fw_ic_ver);
+		 "[TSP]fw version 0x%02x !!!!\n", ver);
 
-	if (!force_config) {
-		if ((info->fw_ic_ver >= bin_ver) &&
-			(info->fw_ic_ver != 0xff)) {
+	if (!info->pdata || !info->pdata->mux_fw_flash) {
+		ret = 1;
+		dev_err(&client->dev,
+			"fw cannot be updated, missing platform data\n");
+		goto out;
+	}
+
+	if (ldi == 'N') {
+		if (info->ldi == 'M')
+			bin_ver = FW_VERSION_M;
+		else
+			bin_ver = FW_VERSION_L;
+	} else {
+		if (ldi == 'M')
+			bin_ver = FW_VERSION_M;
+		else
+			bin_ver = FW_VERSION_L;
+	}
+
+	if (!force) {
+		if ((ver >= bin_ver) && (ver != 0xff)) {
 			dev_info(&client->dev,
 				"fw version update does not need\n");
 			goto done;
@@ -2498,70 +2391,24 @@ static int mms_ts_fw_load(struct mms_ts_info *info, bool force_config)
 	}
 
 	while (retries--) {
-		if (error) {
-			dev_err(&client->dev, "retry flashing\n");
-			ret = mms_flash_boot(info);
-			if (ret != 0) {
-				dev_err(&client->dev, "mms_flash_boot fail\n");
-				continue;
-			}
-			error = false;
+		ret = mms100_ISC_download_mbinary(info);
+
+		ver = get_fw_version(info, SEC_CONFIG);
+		info->fw_ic_ver = ver;
+
+		if (ret == 0) {
+			pr_err("[TSP] mms100_ISC_download_mbinary success");
+			goto done;
+		} else {
+			pr_err("[TSP] mms100_ISC_download_mbinary fail [%d]",
+						ret);
+			ret = 1;
 		}
 
-		if (retries == 3)
-			ret = mms100_ISC_download_mbinary(info,
-				force_config, false);
-		else
-			ret = mms100_ISC_download_mbinary(info,
-				force_config, true);
-		if (ret != 0) {
-			dev_err(&client->dev, "mms100_ISC_download_mbinary fail\n");
-			error = true;
-			continue;
-		}
-		fw_check = check_fw_status(info);
-		if (fw_check != 0) {
-			dev_err(&client->dev, "check_fw_status fail\n");
-			error = true;
-			continue;
-		}
-		if (retries != 3) {
-			ver = get_fw_version(info, SEC_BOOTLOADER);
-			if (ver != 0x4) {
-				dev_err(&client->dev, "boot version read fail\n");
-				error = true;
-				continue;
-			}
-			ver = get_fw_version(info, SEC_CORE);
-			if (ver != 0x53) {
-				dev_err(&client->dev, "core version read fail\n");
-				error = true;
-				continue;
-			}
-		}
-		info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
-		if (info->fw_ic_ver != bin_ver) {
-			dev_err(&client->dev, "fw version read fail\n");
-			error = true;
-			continue;
-		}
-		info->panel = get_panel_version(info);
-		if (info->panel != 'M') {
-			dev_err(&client->dev, "panel info read fail\n");
-			error = true;
-			continue;
-		}
-		pr_err("[TSP] mms100_ISC_download_mbinary success");
-		break;
+		dev_err(&client->dev, "retrying flashing\n");
 	}
-	if (error) {
-		pr_err("[TSP] fw update fail");
-		ret = 1;
-	} else {
-		dev_info(&client->dev,
-			 "[TSP]fw version 0x%02x !!!!\n",
-			 info->fw_ic_ver);
-	}
+
+out:
 done:
 	return ret;
 }
@@ -2828,12 +2675,13 @@ static void get_raw_data_all(struct mms_ts_info *info, u8 cmd)
 {
 	u8 w_buf[6];
 	u8 read_buffer[2];	/* 52 */
+	int gpio;
 	int ret;
 	int i, j;
 	u32 max_value = 0, min_value = 0;
 	u32 raw_data;
 	char buff[TSP_CMD_STR_LEN] = {0};
-	int gpio = info->pdata->gpio_int;
+	gpio = info->pdata->gpio_int;
 
 /*      gpio = msm_irq_to_gpio(info->irq); */
 	disable_irq(info->irq);
@@ -3012,23 +2860,32 @@ static int mms_ts_core_fw_load(struct mms_ts_info *info)
 	struct i2c_client *client = info->client;
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	int ret = 0;
-	u8 fw_bin_ver = FW_VERSION;
-	int retries = 3;
+	int ver = 0, fw_bin_ver = 0;
+	int retries = 5;
 	const u8 *buff = 0;
 	long fsize = 0;
 	const struct firmware *tsp_fw = NULL;
-	bool error = false;
-	u8 ver;
+
+	ver = get_fw_version(info, SEC_CONFIG);
+	info->fw_ic_ver = ver;
 
 	dev_info(&client->dev, "Entered REQ_FW\n");
-	ret = request_firmware(&tsp_fw,
-		"tsp_melfas/note/melfas.fw", &(client->dev));
+	if (info->ldi == 'L') {
+		fw_bin_ver = FW_VERSION_L;
+		ret = request_firmware(&tsp_fw,
+			"tsp_melfas/note/melfasl.fw", &(client->dev));
+	} else {
+		fw_bin_ver = FW_VERSION_M;
+		ret = request_firmware(&tsp_fw,
+			"tsp_melfas/note/melfasm.fw", &(client->dev));
+	}
+	dev_info(&client->dev,
+		"fw_ic_ver = 0x%02x, fw_bin_ver = 0x%02x\n",
+		info->fw_ic_ver, fw_bin_ver);
 	if (ret) {
 		dev_err(&client->dev, "request firmware error!!\n");
 		return 1;
 	}
-	dev_info(&client->dev,
-		"fw_bin_ver = 0x%02x\n", fw_bin_ver);
 
 	fsize = tsp_fw->size;
 	buff = kzalloc((size_t)fsize, GFP_KERNEL);
@@ -3042,11 +2899,8 @@ static int mms_ts_core_fw_load(struct mms_ts_info *info)
 	memcpy((void *)buff, tsp_fw->data, fsize);
 	release_firmware(tsp_fw);
 
+	disable_irq(info->irq);
 	while (retries--) {
-		if (error) {
-			dev_err(&client->dev, "retry flashing\n");
-			error = false;
-		}
 		i2c_lock_adapter(adapter);
 		info->pdata->mux_fw_flash(true);
 
@@ -3057,48 +2911,28 @@ static int mms_ts_core_fw_load(struct mms_ts_info *info)
 		i2c_unlock_adapter(adapter);
 
 		if (ret < 0) {
-			dev_err(&client->dev, "fw_download fail\n");
-			error = true;
+			dev_err(&client->dev, "retrying flashing\n");
 			continue;
 		}
 
-		ver = get_fw_version(info, SEC_BOOTLOADER);
-		if (ver != 0x4) {
-			dev_err(&client->dev, "boot version read fail\n");
-			error = true;
-			continue;
+		ver = get_fw_version(info, SEC_CONFIG);
+		info->fw_ic_ver = ver;
+
+		if (ver == fw_bin_ver) {
+			dev_info(&client->dev,
+			  "fw update done. ver = 0x%02x\n", ver);
+			enable_irq(info->irq);
+			kfree(buff);
+			return 0;
+		} else {
+			dev_err(&client->dev,
+				"ERROR : fw version is still wrong (0x%x != 0x%x)\n",
+				ver, fw_bin_ver);
 		}
-		ver = get_fw_version(info, SEC_CORE);
-		if (ver != 0x53) {
-			dev_err(&client->dev, "core version read fail\n");
-			error = true;
-			continue;
-		}
-		info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
-		if (info->fw_ic_ver != fw_bin_ver) {
-			dev_err(&client->dev, "config version read fail\n");
-			error = true;
-			continue;
-		}
-		info->panel = get_panel_version(info);
-		if (info->panel != 'M') {
-			dev_err(&client->dev, "panel info read fail\n");
-			error = true;
-			continue;
-		}
-		dev_info(&client->dev,
-		  "ISP fw update done. ver = 0x%02x\n", info->fw_ic_ver);
-		break;
+		dev_err(&client->dev, "retrying flashing\n");
 	}
-	if (error) {
-		dev_err(&client->dev, "ERROR : fw update fail\n");
-		kfree(buff);
-		return 1;
-	} else {
-		dev_info(&client->dev, "fw update success\n");
-		kfree(buff);
-		return 0;
-	}
+	kfree(buff);
+	return 1;
 }
 
 static void fw_update(void *device_data)
@@ -3123,7 +2957,11 @@ static void fw_update(void *device_data)
 		goto not_support;
 	}
 	set_default_result(info);
-	fw_bin_ver = FW_VERSION;
+	if (info->ldi == 'L')
+		fw_bin_ver = FW_VERSION_L;
+	else
+		fw_bin_ver = FW_VERSION_M;
+
 	dev_info(&client->dev,
 		"fw_ic_ver = 0x%02x, fw_bin_ver = 0x%02x\n",
 		info->fw_ic_ver, fw_bin_ver);
@@ -3131,19 +2969,19 @@ static void fw_update(void *device_data)
 	if (info->cmd_param[0] == 0) {
 		if (info->fw_core_ver > 0x53) {
 			dev_info(&client->dev,
-				"fw update does not need\n");
+				"fw version update does not need\n");
 			info->cmd_state = 2;
 			goto do_not_need_update;
 		} else if (info->fw_core_ver == 0x53) {
 			if (info->fw_ic_ver >= fw_bin_ver) {
 				dev_info(&client->dev,
-					"fw update does not need\n");
+					"fw version update does not need\n");
 				info->cmd_state = 2;
 				goto do_not_need_update;
 			}
 		} else { /* core < 0x53 */
 			dev_info(&client->dev,
-				"fw update excute(core:0x%x)\n",
+				"fw version update need(core:0x%x)\n",
 				info->fw_core_ver);
 		}
 	}
@@ -3152,20 +2990,24 @@ static void fw_update(void *device_data)
 	case BUILT_IN:
 		dev_info(&client->dev, "built in fw is loaded!!\n");
 		disable_irq(info->irq);
+		while (retries--) {
 #if 0
-		ret = mms100_ISC_download_mbinary(info, true, false);
+			ret = mms100_ISC_download_mbinary(info);
 #else
-		ret = mms_ts_core_fw_load(info);
+			ret = mms_ts_core_fw_load(info);
 #endif
-		ver = get_fw_version(info, SEC_CONFIG);
-		info->fw_ic_ver = ver;
-		if (ret == 0) {
-			pr_err("[TSP] fw update success");
-			info->cmd_state = 2;
-		} else {
-			pr_err("[TSP] fw update fail[%d]",
-						ret);
-			info->cmd_state = 3;
+			ver = get_fw_version(info, SEC_CONFIG);
+			info->fw_ic_ver = ver;
+			if (ret == 0) {
+				pr_err("[TSP] mms100_ISC_download_mbinary success");
+				info->cmd_state = 2;
+				enable_irq(info->irq);
+				return;
+			} else {
+				pr_err("[TSP] mms100_ISC_download_mbinary fail[%d]",
+							ret);
+				info->cmd_state = 3;
+			}
 		}
 		enable_irq(info->irq);
 		return;
@@ -3245,7 +3087,7 @@ static void fw_update(void *device_data)
 		i2c_unlock_adapter(adapter);
 
 		if (ret < 0) {
-			dev_err(&client->dev, "retry flashing\n");
+			dev_err(&client->dev, "retrying flashing\n");
 			continue;
 		}
 
@@ -3276,7 +3118,7 @@ static void fw_update(void *device_data)
 					"ERROR : fw version is still wrong (0x%x != 0x%x)\n",
 					ver, fw_bin_ver);
 		}
-		dev_err(&client->dev, "retry flashing\n");
+		dev_err(&client->dev, "retrying flashing\n");
 	}
 
 if (fp != NULL) {
@@ -3301,7 +3143,11 @@ static void get_fw_ver_bin(void *device_data)
 	char buff[16] = {0};
 
 	set_default_result(info);
-	snprintf(buff, sizeof(buff), "ME0053%02x", FW_VERSION);
+	if (info->ldi == 'L')
+		snprintf(buff, sizeof(buff), "ME0053%02x", FW_VERSION_L);
+	else
+		snprintf(buff, sizeof(buff), "ME0053%02x", FW_VERSION_M);
+
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = 2;
 	dev_info(&info->client->dev, "%s: %s(%d)\n", __func__,
@@ -3338,9 +3184,9 @@ static void get_config_ver(void *device_data)
 	set_default_result(info);
 
 	if (info->ldi == 'L')
-		snprintf(buff, sizeof(buff), "N7100_Me_1026_L");
+		snprintf(buff, sizeof(buff), "N7100_Me_0921_L");
 	else
-		snprintf(buff, sizeof(buff), "N7100_Me_1026_M");
+		snprintf(buff, sizeof(buff), "N7100_Me_0911_M");
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = 2;
 	dev_info(&info->client->dev, "%s: %s(%d)\n", __func__,
@@ -4015,125 +3861,6 @@ static struct attribute_group sec_touch_factory_attr_group = {
 };
 #endif /* SEC_TSP_FACTORY_TEST */
 
-static int mms_ts_fw_check(struct mms_ts_info *info)
-{
-	struct i2c_client *client = info->client;
-	int ret;
-	u8 ver;
-	char buf[4] = { 0, };
-
-	ret = i2c_master_recv(client, buf, 1);
-	if (ret < 0) {		/* tsp connect check */
-		pr_err("%s: i2c fail...[%d], addr[%d]\n",
-			   __func__, ret, info->client->addr);
-#if	!defined(CONFIG_MACH_GD2)
-		if (gpio_get_value(GPIO_OLED_DET)) {
-			dev_err(&client->dev, "panel connected\n");
-			dev_err(&client->dev, "excute core firmware update\n");
-			ret = mms_ts_core_fw_load(info);
-			if (ret) {
-				dev_err(&client->dev,
-					"failed to initialize (%d)\n",
-					ret);
-				return ret;
-			}
-		} else {
-			pr_err("%s: tsp driver unload\n", __func__);
-			return ret;
-		}
-#endif
-	}
-
-	ver = get_fw_version(info, SEC_BOOTLOADER);
-	if (ver != 0x4) {
-		dev_err(&client->dev, "boot version must be 0x4\n");
-		dev_err(&client->dev, "excute core firmware update\n");
-		ret = mms_ts_core_fw_load(info);
-		if (ret) {
-			dev_err(&client->dev,
-				"failed to initialize (%d)\n",
-				ret);
-			return ret;
-		}
-	} else {
-		dev_info(&client->dev, "boot version : 0x%02x\n",
-			ver);
-	}
-
-	info->fw_core_ver = get_fw_version(info, SEC_CORE);
-	dev_info(&client->dev, "core version : 0x%02x\n",
-		info->fw_core_ver);
-
-	if (info->fw_core_ver == 0x50) {
-		dev_err(&client->dev, "Do not use 0x50 core version\n");
-		dev_err(&client->dev, "excute core firmware update\n");
-		ret = mms_ts_core_fw_load(info);
-		if (ret) {
-			dev_err(&client->dev,
-				"failed to initialize (%d)\n",
-				ret);
-			return ret;
-		}
-		info->fw_core_ver = get_fw_version(info, SEC_CORE);
-	}
-
-	info->panel = get_panel_version(info);
-	if (info->panel == 'M') {
-		if ((info->fw_core_ver < 0x53) ||
-			(info->fw_core_ver == 0xff)) {
-			dev_err(&client->dev, "core version must be 0x53\n");
-			dev_err(&client->dev, "excute core firmware update\n");
-			ret = mms_ts_core_fw_load(info);
-			if (ret) {
-				dev_err(&client->dev,
-					"failed to initialize (%d)\n",
-					ret);
-				return ret;
-			}
-			info->fw_core_ver =
-				get_fw_version(info, SEC_CORE);
-		}
-		info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
-		if ((info->fw_ic_ver < FW_VERSION) &&
-			(info->fw_core_ver == 0x53)) {
-			dev_err(&client->dev, "firmware update\n");
-			dev_err(&client->dev, "ic:0x%x, bin:0x%x\n",
-				info->fw_ic_ver, FW_VERSION);
-			if ((info->fw_ic_ver >= 0x21) ||
-				(info->fw_ic_ver == 0))
-				ret = mms_ts_fw_load(info, false);
-			else
-				ret = mms_ts_core_fw_load(info);
-			if (ret) {
-				dev_err(&client->dev,
-					"failed to initialize (%d)\n",
-					ret);
-				return ret;
-			}
-		}
-	} else if (info->panel == 'A') {
-		dev_info(&client->dev, "A panel. Do not firm update\n");
-	} else {
-		dev_err(&client->dev, "cannot read panel info\n");
-		info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
-		if (info->fw_core_ver == 0x53) {
-			dev_err(&client->dev, "firmware update\n");
-			dev_err(&client->dev, "ic:0x%x, bin:0x%x\n",
-				info->fw_ic_ver, FW_VERSION);
-			ret = mms_ts_fw_load(info, true);
-		} else {
-			dev_err(&client->dev, "excute core firmware update\n");
-			ret = mms_ts_core_fw_load(info);
-		}
-		if (ret) {
-			dev_err(&client->dev,
-				"failed to initialize (%d)\n", ret);
-			return ret;
-		}
-	}
-	return 0;
-}
-
 static int __devinit mms_ts_probe(struct i2c_client *client,
 				  const struct i2c_device_id *id)
 {
@@ -4141,6 +3868,8 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 	struct mms_ts_info *info;
 	struct input_dev *input_dev;
 	int ret = 0;
+	char buf[4] = { 0, };
+
 #ifdef SEC_TSP_FACTORY_TEST
 	int i;
 	struct device *fac_dev_ts;
@@ -4204,21 +3933,169 @@ static int __devinit mms_ts_probe(struct i2c_client *client,
 		dev_info(&client->dev, "Magna LDI\n");
 	}
 
-	if (info->pdata->mux_fw_flash == NULL) {
-		dev_err(&client->dev,
-			"fw cannot be updated, missing platform data\n");
+	ret = i2c_master_recv(client, buf, 1);
+	if (ret < 0) {		/* tsp connect check */
+		pr_err("%s: i2c fail...tsp driver unload [%d], Add[%d]\n",
+			   __func__, ret, info->client->addr);
 		goto err_config;
 	}
 
-	ret = mms_ts_fw_check(info);
+	info->fw_core_ver = get_fw_version(info, SEC_CORE);
+	dev_info(&client->dev, "core version : 0x%02x\n",
+		info->fw_core_ver);
+
+	if (info->fw_core_ver == 0x50) {
+		dev_err(&client->dev, "Do not use 0x50 core version\n");
+		dev_err(&client->dev, "excute core firmware update\n");
+		ret = mms_ts_core_fw_load(info);
+		if (ret) {
+			dev_err(&client->dev,
+				"failed to initialize (%d)\n",
+				ret);
+			goto err_config;
+		}
+		info->fw_core_ver = get_fw_version(info, SEC_CORE);
+	}
+
+	if (info->ldi == 'L') {
+		if ((info->fw_core_ver < 0x53) ||
+			(info->fw_core_ver == 0xff)) {
+			dev_err(&client->dev, "core version must be 0x53\n");
+			dev_err(&client->dev, "excute core firmware update\n");
+			ret = mms_ts_core_fw_load(info);
+			if (ret) {
+				dev_err(&client->dev,
+					"failed to initialize (%d)\n", ret);
+				goto err_config;
+			}
+			info->fw_core_ver = get_fw_version(info, SEC_CORE);
+		}
+		info->panel = get_panel_version(info);
+		if (info->panel != 'M') {
+			if (info->fw_core_ver == 0x53) {
+				dev_err(&client->dev, "cannot read panel info\n");
+				dev_err(&client->dev, "excute core firmware update\n");
+				ret = mms_ts_fw_load(info, true, 'L');
+			} else {
+				dev_err(&client->dev, "excute core firmware update\n");
+				ret = mms_ts_core_fw_load(info);
+			}
+			if (ret) {
+				dev_err(&client->dev,
+					"failed to initialize (%d)\n",
+					ret);
+			}
+		}
+		info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
+		if (((info->fw_ic_ver < FW_VERSION_L) ||
+			(info->fw_ic_ver == 0xff)) &&
+			(info->fw_core_ver == 0x53)) {
+			dev_err(&client->dev, "firmware update\n");
+			dev_err(&client->dev, "ic:0x%x, bin:0x%x\n",
+				info->fw_ic_ver, FW_VERSION_L);
+			if ((info->fw_ic_ver >= 0x21) ||
+				(info->fw_ic_ver == 0) ||
+				(info->fw_ic_ver == 0xff))
+				ret = mms_ts_fw_load(info, false, 'N');
+			else
+				ret = mms_ts_core_fw_load(info);
+			if (ret) {
+				dev_err(&client->dev,
+					"failed to initialize (%d)\n", ret);
+				goto err_config;
+			}
+		}
+		if ((info->fw_ic_ver >= 0x50) &&
+			(info->fw_ic_ver <= 0x69)) {
+			dev_err(&client->dev, "LSI panel, Magna firmware written\n");
+			dev_err(&client->dev, "ic:0x%x, bin:0x%x\n",
+				info->fw_ic_ver, FW_VERSION_L);
+			ret = mms_ts_fw_load(info, true, 'L');
+			if (ret) {
+				dev_err(&client->dev,
+					"failed to initialize (%d)\n", ret);
+				goto err_config;
+			}
+		}
+	} else {
+		info->panel = get_panel_version(info);
+		dev_info(&client->dev, "%c panel\n", info->panel);
+		if (info->panel == 'M') {
+			if ((info->fw_core_ver < 0x53) ||
+				(info->fw_core_ver == 0xff)) {
+				dev_err(&client->dev, "core version must be 0x53\n");
+				dev_err(&client->dev, "excute core firmware update\n");
+				ret = mms_ts_core_fw_load(info);
+				if (ret) {
+					dev_err(&client->dev,
+						"failed to initialize (%d)\n",
+						ret);
+					goto err_config;
+				}
+				info->fw_core_ver =
+					get_fw_version(info, SEC_CORE);
+			}
+			info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
+			if ((info->fw_ic_ver < FW_VERSION_M) &&
+				(info->fw_core_ver == 0x53)) {
+				dev_err(&client->dev, "firmware update\n");
+				dev_err(&client->dev, "ic:0x%x, bin:0x%x\n",
+					info->fw_ic_ver, FW_VERSION_M);
+				if ((info->fw_ic_ver >= 0x24) ||
+					(info->fw_ic_ver == 0))
+					ret = mms_ts_fw_load(info, false, 'N');
+				else
+					ret = mms_ts_core_fw_load(info);
+				if (ret) {
+					dev_err(&client->dev,
+						"failed to initialize (%d)\n",
+						ret);
+					goto err_config;
+				}
+			}
+		} else if (info->panel == 'A') {
+			dev_info(&client->dev, "A panel. Do not firm update\n");
+		} else {
+			dev_err(&client->dev, "cannot read panel info\n");
+			info->fw_ic_ver = get_fw_version(info, SEC_CONFIG);
+			if (info->fw_core_ver == 0x53) {
+				dev_err(&client->dev, "firmware update\n");
+				dev_err(&client->dev, "ic:0x%x, bin:0x%x\n",
+					info->fw_ic_ver, FW_VERSION_M);
+				ret = mms_ts_fw_load(info, true, 'N');
+			} else {
+				dev_err(&client->dev, "excute core firmware update\n");
+				ret = mms_ts_core_fw_load(info);
+			}
+			if (ret) {
+				dev_err(&client->dev,
+					"failed to initialize (%d)\n",
+					ret);
+				goto err_config;
+			}
+		}
+		if ((info->fw_ic_ver >= 0x30) &&
+			(info->fw_ic_ver <= 0x49)) {
+			dev_err(&client->dev, "Magna panel, LSI firmware written\n");
+			dev_err(&client->dev, "ic:0x%x, bin:0x%x\n",
+				info->fw_ic_ver, FW_VERSION_M);
+			ret = mms_ts_fw_load(info, true, 'M');
+			if (ret) {
+				dev_err(&client->dev,
+					"failed to initialize (%d)\n", ret);
+				goto err_config;
+			}
+		}
+	}
+	info->panel = get_panel_version(info);
+	dev_info(&client->dev, "%c panel\n", info->panel);
+
+	ret = mms_ts_fw_info(info);
 	if (ret) {
 		dev_err(&client->dev,
 			"failed to initialize (%d)\n", ret);
 		goto err_config;
 	}
-
-	info->panel = get_panel_version(info);
-	dev_info(&client->dev, "%c panel\n", info->panel);
 
 	if (info->panel == 'M')
 		info->tx_num = TX_NUM_M;

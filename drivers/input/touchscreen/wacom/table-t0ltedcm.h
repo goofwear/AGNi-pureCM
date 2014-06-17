@@ -17,8 +17,6 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _LINUX_WACOM_I2C_TABLE_T0LTEDCM_H
-#define _LINUX_WACOM_I2C_TABLE_T0LTEDCM_H
 
 short TblX_CCW_LLeft_44[] = {
 #include "table/t0ltedcm/wacom_i2c_tblX_CCW_LLeft_T0.h"
@@ -52,11 +50,15 @@ short TblY_PRight_44[] = {
 /* 0: Left, 1: Right */
 /* 0: Portrait 0, 1: Landscape 90, 2: Portrait 180 3: Landscape 270*/
 short tilt_offsetX[MAX_HAND][MAX_ROTATION] = \
-	{{-30, -30, 10, 15, }, {15, -30, -30, 10, } };
+	{{-10, -40, -10, 30, }, {30, -10, -40, -10, } };
 short tilt_offsetY[MAX_HAND][MAX_ROTATION] = \
-	{{0, -10, -40, 0, }, {0, 0, -10, -40, } };
+	{{50, 10, -40, 20, }, {20, 50, 10, -40, } };
 
-char *tuning_version = "0915";
+short tilt_offsetX_B713[MAX_HAND][MAX_ROTATION] = \
+	{{85, 100, -50, -85, }, {-85, 85, 100, -50, } };
+short tilt_offsetY_B713[MAX_HAND][MAX_ROTATION] = \
+	{{-90, 120, 100, -80, }, {-80, -90, 120, 100, } };
+
+char *tuning_version = "0907";
+char *tuning_version_B713 = "0730";
 char *tuning_model = "SGH-N025";
-
-#endif /* _LINUX_WACOM_I2C_TABLE_T0LTEDCM_H */

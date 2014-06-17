@@ -56,10 +56,6 @@
 #include <plat/map-base.h>
 #include <plat/map-s5p.h>
 
-#ifdef CONFIG_EXYNOS_C2C
-#include <mach/c2c.h>
-#endif
-
 extern unsigned long sys_pwr_conf_addr;
 extern unsigned int l2x0_save[3];
 extern unsigned int scu_save[2];
@@ -328,23 +324,11 @@ static int loop_sdmmc_check(void)
  *		0b : B-session is not valiid
  * USB_EXYNOS_SWITCH can check Both Host and Device status.
  */
-
-#ifdef CONFIG_LINK_DEVICE_USB
-extern int during_hub_resume;
-#endif
-
 static int check_usb_op(void)
 {
 #if defined(CONFIG_USB_S3C_OTGD) && !defined(CONFIG_USB_EXYNOS_SWITCH)
 	void __iomem *base_addr;
 	unsigned int val;
-
-#ifdef CONFIG_LINK_DEVICE_USB
-	if (during_hub_resume) {
-		pr_info("mif: Not entering LPA !\n");
-		return 1;
-	}
-#endif
 
 	base_addr = chk_usbotg_op.base;
 	val = __raw_readl(base_addr + S3C_UDC_OTG_GOTGCTL);
@@ -357,7 +341,7 @@ static int check_usb_op(void)
 #endif
 }
 
-#ifdef CONFIG_MACH_U1_NA_SPR
+#if defined (CONFIG_MACH_U1_NA_SPR) || (CONFIG_MACH_U1_NA_USCC)
 #include "../../../sound/soc/samsung/srp-types.h"
 #include "../../../sound/soc/samsung/idma.h"
 #endif
@@ -388,34 +372,18 @@ static inline int check_gps_uart_op(void)
 	return gps_is_running;
 }
 
-#ifdef CONFIG_INTERNAL_MODEM_IF
+#if defined(CONFIG_INTERNAL_MODEM_IF) || defined(CONFIG_SAMSUNG_PHONE_TTY)
 static int check_idpram_op(void)
 {
-#ifdef CONFIG_SEC_MODEM_U1_SPR
-	/*
-	If GPIO_CP_DUMP_INT is HIGH, dpram is in use.
-	If there is a cmd in cp's mbx, dpram is in use.
-	*/
-
-	/* block any further write's into dpram from ap*/
-	gpio_set_value(GPIO_PDA_ACTIVE, 0);
-
-	if (gpio_get_value(GPIO_CP_DUMP_INT) ||
-		!gpio_get_value(GPIO_DPRAM_INT_CP_N)) {
-		pr_info("LPA. dpram is in use\n");
-		gpio_set_value(GPIO_PDA_ACTIVE, 1);
-		return 1;
-	}
-
-	/* dpram is not in use, so keep GPIO_PDA_ACTIVE low and return */
-	return 0;
-#else
 	/* This pin is high when CP might be accessing dpram */
+#ifdef CONFIG_MACH_U1_NA_SPR
+	int cp_int = __raw_readl(S5P_VA_GPIO2 + 0xC24) & 4;
+#else
 	int cp_int = gpio_get_value(GPIO_CP_AP_DPRAM_INT);
+#endif
 	if (cp_int != 0)
 		pr_info("%s cp_int is high.\n", __func__);
 	return cp_int;
-#endif
 }
 #endif
 
@@ -462,7 +430,7 @@ static int exynos4_check_operation(void)
 		return 1;
 #endif
 
-#ifdef CONFIG_MACH_U1_NA_SPR
+#if defined (CONFIG_MACH_U1_NA_SPR) || (CONFIG_MACH_U1_NA_USCC)
 #ifdef CONFIG_SND_SAMSUNG_RP
 	if (!srp_get_status(IS_RUNNING))
 		return 1;
@@ -491,19 +459,15 @@ static int exynos4_check_operation(void)
 	if (exynos4_check_usb_op())
 		return 1;
 
-	if (check_sromc_access())
+	if (check_sromc_access()) {
+		pr_info("%s: SROMC is in use!!!\n", __func__);
 		return 1;
-
-#ifdef CONFIG_EXYNOS_C2C
-	if (c2c_connected())
-		return 1;
-#endif
+	}
 
 #ifdef CONFIG_INTERNAL_MODEM_IF
 	if (check_idpram_op())
 		return 1;
 #endif
-
 	return 0;
 }
 
@@ -699,7 +663,7 @@ static int exynos4_enter_core0_lpa(struct cpuidle_device *dev,
 #endif
 	local_irq_disable();
 
-#ifdef CONFIG_INTERNAL_MODEM_IF
+#if defined(CONFIG_INTERNAL_MODEM_IF) || defined(CONFIG_SAMSUNG_PHONE_TTY)
 	gpio_set_value(GPIO_PDA_ACTIVE, 0);
 #endif
 
@@ -795,8 +759,7 @@ early_wakeup:
 
 	if (log_en)
 		pr_info("---lpa\n");
-
-#ifdef CONFIG_INTERNAL_MODEM_IF
+#if defined(CONFIG_INTERNAL_MODEM_IF) || defined(CONFIG_SAMSUNG_PHONE_TTY)
 	gpio_set_value(GPIO_PDA_ACTIVE, 1);
 #endif
 
@@ -831,7 +794,7 @@ static struct cpuidle_state exynos4_cpuidle_set[] = {
 	[1] = {
 		.enter			= exynos4_enter_lowpower,
 		.exit_latency		= 300,
-		.target_residency	= 5000,
+		.target_residency	= 10000,
 		.flags			= CPUIDLE_FLAG_TIME_VALID,
 		.name			= "LOW_POWER",
 		.desc			= "ARM power down",
@@ -1110,7 +1073,7 @@ static int __init exynos4_init_cpuidle(void)
 
 	ret = cpuidle_register_driver(&exynos4_idle_driver);
 
-	if (ret < 0) {
+	if(ret < 0){
 		printk(KERN_ERR "exynos4 idle register driver failed\n");
 		return ret;
 	}

@@ -101,7 +101,9 @@ struct gp2a_data {
 	int irq;
 	int average[3];	/*for proximity adc average */
 	ktime_t prox_poll_delay;
+	u8 enabled;
 	u8 thresh_diff;
+	u8 power_state;
 #ifdef GP2A_CALIBRATION
 	u8 default_threshold;
 	u8 cal_data;
@@ -252,9 +254,10 @@ static ssize_t
 proximity_enable_show(struct device *dev,
 		      struct device_attribute *attr, char *buf)
 {
+	struct gp2a_data *data = dev_get_drvdata(dev);
 	int enabled;
 
-	enabled = gp2a_enabled & PROXIMITY_ENABLED;
+	enabled = data->enabled;
 
 	return sprintf(buf, "%d\n", enabled);
 }
@@ -279,42 +282,42 @@ proximity_enable_store(struct device *dev,
 
 	gprintk("value = %d\n", value);
 
-	if ((gp2a_enabled & PROXIMITY_ENABLED) && !value) { /* proximity disable */
+	if (data->enabled && !value) { /* proximity disable */
 		disable_irq(data->irq);
 
-		gp2a_enabled &= ~PROXIMITY_ENABLED;
+		data->enabled = 0;
 		proximity_onoff(0);
 		disable_irq_wake(data->irq);
 
 		/* proximity power off */
 		if (data->pdata->gp2a_led_on
-			&& (gp2a_power_state & PROXIMITY_ENABLED)) {
+			&& data->power_state) {
 			data->pdata->gp2a_led_on(false);
-			gp2a_power_state &= ~PROXIMITY_ENABLED;
+			data->power_state = 0;
 		}
 
 #ifdef CONFIG_SENSORS_GP2A_VDD_CONTROL
 	        /* gp2a vdd power off */
 		if (data->pdata->gp2a_vdd_on
-			&& !(gp2a_enabled & LIGHT_ENABLED)) {
+			&& !(data->enabled & LIGHT_ENABLED)) {
 			data->pdata->gp2a_vdd_on(false);
-			gp2a_power_state &= ~LIGHT_ENABLED;
+			data->power_state &= ~LIGHT_ENABLED;
 		}
 #endif
-	} else if (!(gp2a_enabled & PROXIMITY_ENABLED) && value) { /* proximity enable */
+	} else if (!(data->enabled) && value) { /* proximity enable */
 		/* proximity power on */
 		if (data->pdata->gp2a_led_on
-			&& !(gp2a_power_state & PROXIMITY_ENABLED)) {
+			&& !(data->power_state)) {
 			data->pdata->gp2a_led_on(true);
-			gp2a_power_state |= PROXIMITY_ENABLED;
+			data->power_state = 1;
 		}
 
 #ifdef CONFIG_SENSORS_GP2A_VDD_CONTROL
 		/* gp2a vdd power on */
 		if (data->pdata->gp2a_vdd_on
-			&& !(gp2a_power_state & LIGHT_ENABLED)) {
+			&& !(data->power_state & LIGHT_ENABLED)) {
 			data->pdata->gp2a_vdd_on(true);
-			gp2a_power_state |= LIGHT_ENABLED;
+			data->power_state |= LIGHT_ENABLED;
 		}
 #endif
 
@@ -326,7 +329,7 @@ proximity_enable_store(struct device *dev,
 			pr_err("%s: proximity_open_calibration() failed\n",
 				__func__);
 #endif
-		gp2a_enabled |= PROXIMITY_ENABLED;
+		data->enabled = 1;
 		proximity_onoff(1);
 		enable_irq_wake(data->irq);
 
@@ -381,7 +384,7 @@ static ssize_t proximity_avg_store(struct device *dev,
 	}
 
 	if (new_value && !proximity_avg_on) {
-		if (!(gp2a_enabled & PROXIMITY_ENABLED)) {
+		if (!(data->enabled)) {
 			/*data->pdata->gp2a_led_on(true);*/
 			proximity_onoff(1);
 		}
@@ -395,7 +398,7 @@ static ssize_t proximity_avg_store(struct device *dev,
 		hrtimer_cancel(&data->prox_timer);
 		proximity_avg_on = 0;
 
-		if (!(gp2a_enabled & PROXIMITY_ENABLED)) {
+		if (!(data->enabled)) {
 			proximity_onoff(0);
 			/*data->pdata->gp2a_led_on(false);*/
 		}
@@ -1079,7 +1082,7 @@ static int gp2a_opt_probe(struct platform_device *pdev)
 #endif
 #endif
 
-	gp2a_enabled &= ~PROXIMITY_ENABLED;
+	gp2a->enabled = 0;
 
 	proximity_sensor_detection = 0;
 	proximity_avg_on = 0;
@@ -1132,9 +1135,9 @@ static int gp2a_opt_probe(struct platform_device *pdev)
 	/* gp2a power on */
 	if (pdata->gp2a_vdd_on) {
 		pdata->gp2a_vdd_on(true);
-		pr_info("%s, power : %d\n", __func__, gp2a_power_state);
+		pr_info("%s, power : %d\n", __func__, gp2a-->power_state);
 	}
-	gp2a_power_state |= LIGHT_ENABLED;
+	gp2a->power_state |= LIGHT_ENABLED;
 	msleep(20);
 #endif
 
@@ -1270,15 +1273,15 @@ static int gp2a_opt_remove(struct platform_device *pdev)
 		return -1;
 	}
 
-	if (gp2a_enabled & PROXIMITY_ENABLED) {
+	if (gp2a->enabled) {
 		disable_irq(gp2a->irq);
-		gp2a_enabled &= ~PROXIMITY_ENABLED;
+		gp2a->enabled = 0;
 
 		proximity_onoff(0);
 		disable_irq_wake(gp2a->irq);
 #if !defined(CONFIG_MACH_MIDAS_02_BD)
 		gp2a->pdata->gp2a_led_on(false);
-		gp2a_power_state &= ~PROXIMITY_ENABLED;
+		gp2a->power_state = 0;
 #endif
 	}
 
@@ -1324,7 +1327,7 @@ static int gp2a_opt_suspend(struct platform_device *pdev, pm_message_t state)
 
 	gprintk("\n");
 
-	if (gp2a_enabled & PROXIMITY_ENABLED) {
+	if (gp2a->enabled) {
 		if (device_may_wakeup(&pdev->dev))
 			enable_irq_wake(gp2a->irq);
 	}
@@ -1343,7 +1346,7 @@ static int gp2a_opt_resume(struct platform_device *pdev)
 
 	gprintk("\n");
 
-	if (gp2a_enabled & PROXIMITY_ENABLED) {
+	if (gp2a->enabled) {
 
 		if (device_may_wakeup(&pdev->dev))
 			enable_irq_wake(gp2a->irq);

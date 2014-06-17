@@ -219,7 +219,7 @@ static void forced_release_buttons(struct synaptics_drv_data *data)
 static void forced_release_fingers(struct synaptics_drv_data *data)
 {
 	int i;
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+#if 0
 	printk(KERN_DEBUG "[TSP] %s\n", __func__);
 #endif
 	for (i = 0; i < MAX_TOUCH_NUM; ++i) {
@@ -253,25 +253,23 @@ static int synaptics_ts_set_func_info(struct synaptics_drv_data *data)
 			addr -= FUNC_ADDR_SIZE) {
 			synaptics_ts_read_block(data,
 				addr, buffer, 6);
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-			if (0x0 != buffer[5]) {
+			if (data->debug) {
 				printk(KERN_DEBUG
 					"[TSP] function : 0x%x\n",
 					buffer[5]);
 				printk(KERN_DEBUG
 					"[TSP] query_base_addr : 0x%x\n",
-					buffer[0] + i);
+					buffer[0]);
 				printk(KERN_DEBUG
 					"[TSP] command_base_addr : 0x%x\n",
-					buffer[1] + i);
+					buffer[1]);
 				printk(KERN_DEBUG
 					"[TSP] control_base_addr : 0x%x\n",
-					buffer[2] + i);
+					buffer[2]);
 				printk(KERN_DEBUG
 					"[TSP] data_base_addr : 0x%x\n",
-					buffer[3] + i);
+					buffer[3]);
 			}
-#endif
 			switch (buffer[5]) {
 			case 0x01:
 				SET_FUNC_ADDR(01, i);
@@ -286,7 +284,7 @@ static int synaptics_ts_set_func_info(struct synaptics_drv_data *data)
 				SET_FUNC_ADDR(1a, i);
 				break;
 #endif
-
+				
 			case 0x34:
 				SET_FUNC_ADDR(34, i);
 				break;
@@ -306,7 +304,6 @@ static int synaptics_ts_set_func_info(struct synaptics_drv_data *data)
 			}
 		}
 	}
-
 #if defined(CONFIG_SEC_TOUCHSCREEN_SURFACE_TOUCH)
 	cnt--;
 #endif
@@ -414,9 +411,8 @@ static int synaptics_ts_set_func(struct synaptics_drv_data *data)
 	} else
 		synaptics_fw_updater(data, NULL);
 
-	printk(KERN_DEBUG "[TSP] firmware version [%c%c%.2d%.2d00]\n",
-		data->firm_version[0], data->firm_version[1],
-		data->firm_version[2], data->firm_version[3]);
+	printk(KERN_DEBUG "[TSP] firmware version %s\n",
+		data->firm_version);
 
 	for (i = 0; i < MAX_TOUCH_NUM; ++i)
 		data->finger[i].status = MT_STATUS_INACTIVE;
@@ -559,16 +555,17 @@ static int check_interrupt_status(struct synaptics_drv_data *data,
 		/* read the finger states */
 		addr = data->f11.data_base_addr;
 		ret = synaptics_ts_read_block(data,
-			addr, buf, 3);
+		      addr, buf, 3);
 		if (ret < 0) {
-			pr_err("[TSP] failed to read i2c data(%d)\n", __LINE__);
-			return -EIO;
+		      pr_err("[TSP] failed to read i2c data(%d)\n", __LINE__);
+		    return -EIO;
 		}
+
 		*finger_status = (u32) (buf[0] | (buf[1] << 8) |
-			((buf[2] & 0xf) << 16));
+		      ((buf[2] & 0xf) << 16));
 
 		if (data->debug)
-			printk(KERN_DEBUG
+		      printk(KERN_DEBUG
 				"[TSP] finger_status : [%d] 0x%x\n", analog_int,
 				*finger_status);
 	}
@@ -697,6 +694,7 @@ static void synaptics_ts_read_points(struct synaptics_drv_data *data,
             data->finger[id].angle = angle;
             data->finger[id].width = surface_data[0];
 #endif
+	    
 			data->finger[id].z = buf.z;
 			if (data->finger[id].z) {
 				if (MT_STATUS_INACTIVE ==
@@ -719,7 +717,7 @@ static void synaptics_ts_read_points(struct synaptics_drv_data *data,
 #endif
 #else
 						printk(KERN_DEBUG
-							"[TSP] ID: %d P\n", id);
+							"s7301 %d P\n", id);
 #endif
 				}
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
@@ -744,7 +742,11 @@ static void synaptics_ts_read_points(struct synaptics_drv_data *data,
 		} else if (MT_STATUS_PRESS == data->finger[id].status) {
 			data->finger[id].status = MT_STATUS_RELEASE;
 			data->finger[id].z = 0;
-			printk(KERN_DEBUG "[TSP] ID: %d\n", id);
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+				printk(KERN_DEBUG "[TSP] ID: %d\n", id);
+#else
+				printk(KERN_DEBUG "s7301 %d R\n", id);
+#endif
 		}
 	}
 
@@ -818,22 +820,20 @@ static void synaptics_ts_read_points(struct synaptics_drv_data *data,
 	}
 	input_sync(data->input);
 	set_dvfs_lock(data, finger_pressed);
+}
 
 #if 0
 #if defined(CONFIG_TOUCHSCREEN_SYNAPTICS_S7301_KEYS)
 	synaptics_ts_check_buttons(data);
 #endif
 #endif
-}
 
 static irqreturn_t synaptics_ts_irq_handler(int irq, void *_data)
 {
 	struct synaptics_drv_data *data = (struct synaptics_drv_data *)_data;
 	u32 finger_status = 0;
-
 	if (check_interrupt_status(data, &finger_status) == 1)
 		synaptics_ts_read_points(data, finger_status);
-
 	return IRQ_HANDLED;
 }
 
@@ -1073,12 +1073,14 @@ static int __init synaptics_ts_probe(struct i2c_client *client,
 	input->close = synaptics_ts_close;
 
 	__set_bit(EV_ABS, input->evbit);
-        __set_bit(EV_KEY, input->evbit);
+	__set_bit(EV_KEY, input->evbit);
 	__set_bit(MT_TOOL_FINGER, input->keybit);
 	__set_bit(INPUT_PROP_DIRECT, input->propbit);
 
+	atomic_set(&ddata->keypad_enable, 1);
+	
 #if defined(CONFIG_TOUCHSCREEN_SYNAPTICS_S7301_KEYLED)
-	if (pdata->led_event) {
+	if (pdata->led_event && atomic_read(&ddata->keypad_enable)) {
 		__set_bit(EV_LED, input->evbit);
 		__set_bit(LED_MISC, input->ledbit);
 	}
@@ -1086,17 +1088,17 @@ static int __init synaptics_ts_probe(struct i2c_client *client,
 
 	input_mt_init_slots(input, MAX_TOUCH_NUM);
 	input_set_abs_params(input, ABS_MT_POSITION_X, 0,
-		pdata->max_x, 0, 0);
+			     pdata->max_x, 0, 0);
 	input_set_abs_params(input, ABS_MT_POSITION_Y, 0,
-		pdata->max_y, 0, 0);
+			     pdata->max_y, 0, 0);
 #if !defined(CONFIG_TOUCHSCREEN_SYNAPTICS_S7301_WORKAROUND)
 	input_set_abs_params(input, ABS_MT_PRESSURE, 0,
 		pdata->max_pressure, 0, 0);
 #endif
 	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0,
-		pdata->max_width, 0, 0);
+			     pdata->max_width, 0, 0);
 	input_set_abs_params(input, ABS_MT_TOUCH_MINOR, 0,
-		pdata->max_width, 0, 0);
+			     pdata->max_width, 0, 0);
 #if defined(CONFIG_SEC_TOUCHSCREEN_SURFACE_TOUCH)
 	input_set_abs_params(input, ABS_MT_WIDTH_MAJOR, 0,
 		pdata->x_line * pdata->y_line, 0, 0);
@@ -1106,17 +1108,19 @@ static int __init synaptics_ts_probe(struct i2c_client *client,
 		0, 1, 0, 0);
 #endif
 #if defined (CONFIG_TOUCHSCREEN_SYNAPTICS_S7301_KEYS)
-	if (pdata->support_extend_button) {
-		for (ret = 0; ret < pdata->extend_button_map->nbuttons; ret++) {
-			if (pdata->extend_button_map->map[ret] != KEY_RESERVED)
-				input_set_capability(input, EV_KEY,
-					pdata->extend_button_map->map[ret]);
-		}
-	} else {
-		for (ret = 0; ret < pdata->button_map->nbuttons; ret++)
-			input_set_capability(input, EV_KEY,
-				pdata->button_map->map[ret]);
-	}
+    if(atomic_read(&ddata->keypad_enable)){
+	    if (pdata->support_extend_button) {
+		    for (ret = 0; ret < pdata->extend_button_map->nbuttons; ret++) {
+			    if (pdata->extend_button_map->map[ret] != KEY_RESERVED)
+				    input_set_capability(input, EV_KEY,
+					    pdata->extend_button_map->map[ret]);
+		    }
+	    } else {
+		    for (ret = 0; ret < pdata->button_map->nbuttons; ret++)
+			    input_set_capability(input, EV_KEY,
+				    pdata->button_map->map[ret]);
+	    }
+    }
 #endif
 
 	ret = input_register_device(input);
@@ -1135,7 +1139,7 @@ static int __init synaptics_ts_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&ddata->noti_dwork, synaptics_ts_noti_dwork);
 #endif
 	schedule_delayed_work(&ddata->init_dwork, HZ);
-
+	
 #if defined(CONFIG_TOUCHSCREEN_SYNAPTICS_S7301_WORKAROUND)
     pdata->hw_reset();
 //	INIT_DELAYED_WORK(&ddata->reset_dwork, synaptics_reset_ts_dwork);
@@ -1205,3 +1209,4 @@ module_exit(synaptics_ts_exit);
 MODULE_AUTHOR("junki671.min@samsung.com");
 MODULE_DESCRIPTION("Driver for Synaptics S7301 Touchscreen Controller");
 MODULE_LICENSE("GPL");
+

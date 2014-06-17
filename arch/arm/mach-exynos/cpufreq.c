@@ -34,9 +34,7 @@
 #include <plat/cpu.h>
 
 #if defined(CONFIG_MACH_PX) || defined(CONFIG_MACH_Q1_BD) ||\
-	defined(CONFIG_MACH_P4NOTE) || defined(CONFIG_MACH_SP7160LTE) ||\
-	defined(CONFIG_MACH_GC1) || defined(CONFIG_MACH_TAB3) ||\
-	defined(CONFIG_MACH_GC2PD)
+	defined(CONFIG_MACH_P4NOTE) || defined(CONFIG_MACH_GC1)
 #include <mach/sec_debug.h>
 #endif
 

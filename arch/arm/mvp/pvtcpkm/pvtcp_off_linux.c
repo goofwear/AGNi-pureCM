@@ -1,7 +1,7 @@
 /*
  * Linux 2.6.32 and later Kernel module for VMware MVP PVTCP Server
  *
- * Copyright (C) 2010-2013 VMware, Inc. All rights reserved.
+ * Copyright (C) 2010-2012 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -43,11 +43,9 @@
 #define PVTCP_PVSOCK_ADDR 0x7fee0001
 #define PVTCP_PVSOCK_NET  0x7fee0000
 #define PVTCP_PVSOCK_MASK 0x000000ff
-#define PVTCP_PVSOCK_NETMASK 0xffffff00
 
 /* From mvpkm */
 extern uid_t Mvpkm_vmwareUid;
-extern gid_t Mvpkm_vmwareGid;
 
 /*
  * Credentials to back socket file pointer. Used in Android ICS network
@@ -64,7 +62,7 @@ extern void PvtcpOffLargeDgramBufInit(void);
 
 static const unsigned short portRangeBase = 7000;
 static const unsigned int   portRangeSize = 31;
-static int hooksRegistered;
+static int hooksRegistered = 0;
 
 static inline int PvtcpTestPortIndexBit(unsigned int addr,
                                         unsigned int portIdx);
@@ -291,7 +289,7 @@ StateKObjStore(struct kobject *kobj,
 }
 
 
-static const struct sysfs_ops StateKObjSysfsOps = {
+static struct sysfs_ops StateKObjSysfsOps = {
    .show = StateKObjShow,
    .store = StateKObjStore
 };
@@ -433,9 +431,9 @@ static char perCpuBuf[NR_CPUS][PVTCP_SOCK_BUF_SIZE];
 
 #define PVTCP_OFF_MAX_LB_ADDRS 255
 static unsigned int loopbackAddrs[PVTCP_OFF_MAX_LB_ADDRS] = {
-   0xffffffff, /* Network address always on, all ports allowed. */
-   0x7fffffff  /* Host address not yet on, all ports allowed. */
-               /* All the rest zeroed out. */
+   0xffffffff, // Network address always on, all ports allowed.
+   0x7fffffff  // Host address not yet on, all ports allowed.
+               // All the rest zeroed out.
 };
 
 static const unsigned int loopbackReserved = 0x00000001 << 31;
@@ -480,13 +478,13 @@ PvtcpResetPortIndexBit(unsigned int addr,
 
 unsigned int pvtcpLoopbackOffAddr;
 
-unsigned long long pvtcpOffDgramAllocations;
+unsigned long long pvtcpOffDgramAllocations = 0;
 
 /*
  * Destructor shim addresses and function pointer
  */
 
-extern void asmDestructorShim(struct sock *);
+extern void asmDestructorShim(struct sock*);
 
 
 /*
@@ -523,7 +521,7 @@ GetLoopbackAddr(void)
    for (idx = 1; idx < PVTCP_OFF_MAX_LB_ADDRS; idx++) {
       if (!PvtcpTestLoopbackBit(loopbackAddrs[idx], loopbackReserved)) {
          addrTempl[3] = (unsigned char)idx;
-         memcpy(&rc, addrTempl, sizeof(rc));
+         memcpy(&rc, addrTempl, sizeof rc);
 
          /* Create a dgram socket to configure/bring-up the lo:N interface. */
 
@@ -537,33 +535,33 @@ GetLoopbackAddr(void)
                .ifr_flags = IFF_UP
             };
 
-            snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "lo:%u", idx);
-            memcpy(&ifr.ifr_addr, &sin, sizeof(ifr.ifr_addr));
+            snprintf(ifr.ifr_name, sizeof ifr.ifr_name, "lo:%u", idx);
+            memcpy(&ifr.ifr_addr, &sin, sizeof ifr.ifr_addr);
             err = kernel_sock_ioctl(sock, SIOCSIFADDR, (unsigned long)&ifr);
             sock_release(sock);
             if (err) {
                CommOS_Log(("%s: Could not set loopback address (ioctl)!\n",
-                           __func__));
+                           __FUNCTION__));
                rc = -1U;
                continue; /* Try next address. */
             } else {
                PvtcpSetLoopbackBit(loopbackAddrs[idx], loopbackReserved);
                CommOS_Debug(("%s: Allocated loopback address [%u.%u.%u.%u].\n",
-                             __func__,
+                             __FUNCTION__,
                              addrTempl[0], addrTempl[1],
                              addrTempl[2], addrTempl[3]));
                break;
             }
          } else {
             CommOS_Log(("%s: Could not set loopback address (create)!\n",
-                        __func__));
+                        __FUNCTION__));
             rc = -1U;
             break;
          }
       }
    }
    if (idx == PVTCP_OFF_MAX_LB_ADDRS) {
-      CommOS_Log(("%s: loopback address range exceeded!\n", __func__));
+      CommOS_Log(("%s: loopback address range exceeded!\n", __FUNCTION__));
    }
 
    CommOS_MutexUnlock(&globalLock);
@@ -584,8 +582,8 @@ PutLoopbackAddr(unsigned int uaddr)
    unsigned int idx;
    struct socket *sock;
 
-   memcpy(addr, &uaddr, sizeof(uaddr));
-   if (memcmp(addrTempl, addr, sizeof(addrTempl))) {
+   memcpy(addr, &uaddr, sizeof uaddr);
+   if (memcmp(addrTempl, addr, sizeof addrTempl)) {
       return;
    }
 
@@ -597,7 +595,7 @@ PutLoopbackAddr(unsigned int uaddr)
    CommOS_MutexLock(&globalLock);
    if (!PvtcpTestLoopbackBit(loopbackAddrs[idx], loopbackReserved)) {
       CommOS_Debug(("%s: loopback entry [%u] already freed.\n",
-                    __func__, idx));
+                    __FUNCTION__, idx));
       goto out;
    }
 
@@ -610,16 +608,16 @@ PutLoopbackAddr(unsigned int uaddr)
          .ifr_flags = 0
       };
 
-      snprintf(ifr.ifr_name, sizeof(ifr.ifr_name), "lo:%u", idx);
-      memcpy(&ifr.ifr_addr, &sin, sizeof(ifr.ifr_addr));
+      snprintf(ifr.ifr_name, sizeof ifr.ifr_name, "lo:%u", idx);
+      memcpy(&ifr.ifr_addr, &sin, sizeof ifr.ifr_addr);
       kernel_sock_ioctl(sock, SIOCSIFFLAGS, (unsigned long)&ifr);
       sock_release(sock);
-      loopbackAddrs[idx] = 0; /* Zero everything out. */
+      loopbackAddrs[idx] = 0; // Zero everything out.
       CommOS_Debug(("%s: Deallocated loopback address [%u.%u.%u.%u].\n",
-                    __func__, addr[0], addr[1], addr[2], addr[3]));
+                    __FUNCTION__, addr[0], addr[1], addr[2], addr[3]));
    } else {
       CommOS_Log(("%s: Could not delete loopback address!\n",
-                  __func__));
+                  __FUNCTION__));
    }
 
 out:
@@ -649,7 +647,7 @@ GetNetNamespace(PvtcpState *state)
    struct nsproxy *nsproxy;
    struct net *ns;
    struct socket *sock;
-   struct sockaddr_un addr __attribute__ ((aligned(4))) = {
+   struct sockaddr_un addr = {
       .sun_family = AF_UNIX
    };
    struct timeval timeout = {
@@ -677,20 +675,20 @@ GetNetNamespace(PvtcpState *state)
    pidn = 0;
 
    if (sock_create_kern(AF_UNIX, SOCK_DGRAM, 0, &sock)) {
-      CommOS_Debug(("%s: Can't create config socket!\n", __func__));
+      CommOS_Debug(("%s: Can't create config socket!\n", __FUNCTION__));
       goto out;
    }
    if (kernel_setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO,
-                         (char *)&timeout, sizeof(timeout))) {
+                         (char *)&timeout, sizeof timeout)) {
       sock_release(sock);
-      CommOS_Debug(("%s: Can't set timeout on config socket!\n", __func__));
+      CommOS_Debug(("%s: Can't set timeout on config socket!\n", __FUNCTION__));
       goto out;
    }
    if (kernel_setsockopt(sock, SOL_SOCKET, SO_PASSCRED,
-                         (char *)&passcred, sizeof(passcred))) {
+                         (char *)&passcred, sizeof passcred)) {
       sock_release(sock);
       CommOS_Debug(("%s: Can't set passcred on config socket!\n",
-                    __func__));
+                    __FUNCTION__));
       goto out;
    }
 
@@ -701,9 +699,9 @@ GetNetNamespace(PvtcpState *state)
     * - the reply is expected to contain the pid of the namespace owner.
     */
 
-   memset(buf, 0, sizeof(buf));
-   snprintf(buf, sizeof(buf), "%u\n", args.id.d32[0]);
-   buf[sizeof(buf) - 1] = '\0';
+   memset(buf, 0, sizeof buf);
+   snprintf(buf, sizeof buf, "%u\n", args.id.d32[0]);
+   buf[sizeof buf - 1] = '\0';
    vec.iov_base = buf;
    vec.iov_len = strlen(buf);
 
@@ -714,18 +712,18 @@ GetNetNamespace(PvtcpState *state)
    if (kernel_sendmsg(sock, &msg, &vec, 1, vec.iov_len) <= 0) {
       sock_release(sock);
       CommOS_Debug(("%s: Could not send config request for vm [%u]!\n",
-                    __func__, args.id.d32[0]));
+                    __FUNCTION__, args.id.d32[0]));
       goto out;
    }
 
-   memset(buf, 0, sizeof(buf));
+   memset(buf, 0, sizeof buf);
    vec.iov_base = buf;
-   vec.iov_len = sizeof(buf);
+   vec.iov_len = sizeof buf;
    if (kernel_recvmsg(sock, &msg, &vec, 1, vec.iov_len, 0) <= 0) {
       CommOS_Debug(("%s: Could not receive config reply for vm [%u]!\n",
-                    __func__, args.id.d32[0]));
+                    __FUNCTION__, args.id.d32[0]));
    } else {
-      buf[sizeof(buf) - 1] = '\0';
+      buf[sizeof buf - 1] = '\0';
       /* coverity[secure_coding] */
       sscanf(buf, "%d", &pidn);
    }
@@ -752,11 +750,11 @@ GetNetNamespace(PvtcpState *state)
 out:
    if (!ns) {
       CommOS_Debug(("%s: Not using a namespace  for vm [%u].\n",
-                    __func__, args.id.d32[0]));
+                    __FUNCTION__, args.id.d32[0]));
       ns = &init_net;
    } else {
       CommOS_Debug(("%s: Found the net namespace for vm [%u].\n",
-                    __func__, args.id.d32[0]));
+                    __FUNCTION__, args.id.d32[0]));
    }
 #else
    void *ns = NULL;
@@ -817,20 +815,20 @@ StateAlloc(CommChannel channel)
    kset = Mvpkm_FindVMNamedKSet((int)transpArgs.id.d32[0], "devices");
    if (!kset) {
       CommOS_Debug(("%s: Could not find sysfs '.../vm/N/devices' kset!\n",
-                    __func__));
+                    __FUNCTION__));
       goto error;
    }
 
    state = PvtcpStateAlloc(channel);
    if (!state) {
-      CommOS_Debug(("%s: Could not allocate state!\n", __func__));
+      CommOS_Debug(("%s: Could not allocate state!\n", __FUNCTION__));
       goto error;
    }
 
    /* coverity[leaked_storage] */
-   stateKObj = kzalloc(sizeof(*stateKObj), GFP_KERNEL);
+   stateKObj = kzalloc(sizeof *stateKObj, GFP_KERNEL);
    if (!stateKObj) {
-      CommOS_Debug(("%s: Could not allocate state kobject!\n", __func__));
+      CommOS_Debug(("%s: Could not allocate state kobject!\n", __FUNCTION__));
       goto error;
    }
 
@@ -839,7 +837,7 @@ StateAlloc(CommChannel channel)
    rc = kobject_init_and_add(&stateKObj->kobj, &stateKType, NULL, "pvtcp");
    if (rc) {
       CommOS_Debug(("%s: Could not add state kobject to parent kset [%d]!\n",
-                    __func__, rc));
+                    __FUNCTION__, rc));
       goto error;
    }
 
@@ -847,7 +845,7 @@ StateAlloc(CommChannel channel)
    BUG_ON(loopbackNetif == NULL);
    loopbackNetif->conf.addr.in.s_addr = GetLoopbackAddr();
    if (loopbackNetif->conf.addr.in.s_addr == -1U) {
-      CommOS_Log(("%s: Could not allocate loopback address!\n", __func__));
+      CommOS_Log(("%s: Could not allocate loopback address!\n", __FUNCTION__));
       goto error;
    }
 
@@ -861,8 +859,8 @@ StateAlloc(CommChannel channel)
 #endif
    state->extra = stateKObj;
 
-   _cred.uid = _cred.suid = _cred.euid = _cred.fsuid = Mvpkm_vmwareUid;
-   _cred.gid = _cred.sgid = _cred.egid = _cred.fsgid = Mvpkm_vmwareGid;
+   _cred.uid  = _cred.gid  = _cred.suid  = _cred.sgid  =
+   _cred.euid = _cred.egid = _cred.fsuid = _cred.fsgid = Mvpkm_vmwareUid;
 
 
 out:
@@ -934,15 +932,13 @@ PvtcpReleaseSocket(PvtcpSock *pvsk)
 {
    struct socket *sock = SkFromPvsk(pvsk)->sk_socket;
 
-   PvtcpHoldSock(pvsk);
    SOCK_IN_LOCK(pvsk);
    SOCK_OUT_LOCK(pvsk);
    pvsk->peerSockSet = 0;
    SockReleaseWrapper(sock);
    SOCK_OUT_UNLOCK(pvsk);
    SOCK_IN_UNLOCK(pvsk);
-   PvtcpPutSock(pvsk);
-   CommOS_Debug(("%s: [0x%p].\n", __func__, pvsk));
+   CommOS_Debug(("%s: [0x%p].\n", __FUNCTION__, pvsk));
 }
 
 
@@ -1002,11 +998,11 @@ PvtcpTestAndBindLoopbackInet4(PvtcpSock *pvsk,
    rc = TestLoopbackInet4(pvsk, *addr);
    switch (rc) {
    case 2:
-      propagate = 1; /* Fall through. */
+      propagate = 1; // Fall through.
    case 1:
-      break; /* Proceed with morphing. */
+      break; // Proceed with morphing.
    case 0:
-      return 1; /* Don't morph, let bind() be done by caller. */
+      return 1; // Don't morph, let bind() be done by caller.
    default:
       return rc;
    }
@@ -1027,7 +1023,7 @@ PvtcpTestAndBindLoopbackInet4(PvtcpSock *pvsk,
    PvtcpSwitchSock(pvsk, PVTCP_SOCK_NAMESPACE_INITIAL);
    PvtcpStateAddSocket(pvsk->channel, pvtcpIfLoopbackInet4, pvsk);
    morphedAddr = pvsk->netif->conf.addr.in.s_addr;
-   memset(&sin, 0, sizeof(sin));
+   memset(&sin, 0, sizeof sin);
    sin.sin_family = AF_INET;
    sin.sin_port = port;
    sin.sin_addr.s_addr = morphedAddr;
@@ -1035,7 +1031,7 @@ PvtcpTestAndBindLoopbackInet4(PvtcpSock *pvsk,
    /* Bind to the channel loopback address. */
 
    rc = kernel_bind(SkFromPvsk(pvsk)->sk_socket,
-                    (struct sockaddr *)&sin, sizeof(sin));
+                    (struct sockaddr *)&sin, sizeof sin);
    if (rc) {
       PvtcpSwitchSock(pvsk, PVTCP_SOCK_NAMESPACE_CHANNEL);
       PvtcpStateAddSocket(pvsk->channel, pvtcpIfUnbound, pvsk);
@@ -1117,11 +1113,11 @@ PvtcpTestAndBindLoopbackInet6(PvtcpSock *pvsk,
    rc = TestLoopbackInet4(pvsk, in6Addr.in6.s6_addr32[3]);
    switch (rc) {
    case 2:
-      propagate = 1; /* Fall through. */
+      propagate = 1; // Fall through.
    case 1:
-      break; /* Proceed with morphing. */
+      break; // Proceed with morphing.
    case 0:
-      return 1; /* Don't morph, let bind() be done by caller. */
+      return 1; // Don't morph, let bind() be done by caller.
    default:
       return rc;
    }
@@ -1142,7 +1138,7 @@ PvtcpTestAndBindLoopbackInet6(PvtcpSock *pvsk,
    PvtcpSwitchSock(pvsk, PVTCP_SOCK_NAMESPACE_INITIAL);
    PvtcpStateAddSocket(pvsk->channel, pvtcpIfLoopbackInet4, pvsk);
    ipv6_addr_set_v4mapped(pvsk->netif->conf.addr.in.s_addr, &in6Addr.in6);
-   memset(&sin6, 0, sizeof(sin6));
+   memset(&sin6, 0, sizeof sin6);
    sin6.sin6_family = AF_INET6;
    sin6.sin6_port = port;
    sin6.sin6_addr = in6Addr.in6;
@@ -1153,9 +1149,9 @@ PvtcpTestAndBindLoopbackInet6(PvtcpSock *pvsk,
     */
 
    (void)kernel_setsockopt(SkFromPvsk(pvsk)->sk_socket, IPPROTO_IPV6,
-                           IPV6_V6ONLY, (char *)&ipv6Only, sizeof(ipv6Only));
+                           IPV6_V6ONLY, (char *)&ipv6Only, sizeof ipv6Only);
    rc = kernel_bind(SkFromPvsk(pvsk)->sk_socket,
-                    (struct sockaddr *)&sin6, sizeof(sin6));
+                    (struct sockaddr *)&sin6, sizeof sin6);
    if (rc) {
       PvtcpSwitchSock(pvsk, PVTCP_SOCK_NAMESPACE_CHANNEL);
       PvtcpStateAddSocket(pvsk->channel, pvtcpIfUnbound, pvsk);
@@ -1199,11 +1195,10 @@ PvtcpResetLoopbackInet4(PvtcpSock *pvsk,
                         unsigned int *addr)
 {
    if (!PvtcpHasSockNamespace(pvsk)) {
-      unsigned int addrOnHost = ntohl(*addr);
+      static const unsigned int pvsockAddr = htonl(PVTCP_PVSOCK_ADDR);
 
-      /* If it's a pvsock address but _not_ the host's, overwrite it. */
-      if ((addrOnHost & PVTCP_PVSOCK_NETMASK) == PVTCP_PVSOCK_NET &&
-          addrOnHost != PVTCP_PVSOCK_ADDR) {
+      if (!memcmp(&pvsockAddr, addr, 3) && memcmp(&pvsockAddr, addr, 4)) {
+         /* If it's a pvsock address but _not_ the host's, overwrite it. */
 
          *addr = htonl(INADDR_LOOPBACK);
       }
@@ -1250,14 +1245,14 @@ Init(void *args)
 #if !defined(PVTCP_DISABLE_NETFILTER)
    rc = nf_register_hooks(netfilterHooks, ARRAY_SIZE(netfilterHooks));
    if (rc) {
-      CommOS_Log(("%s: Could not register netfilter hooks!\n", __func__));
+      CommOS_Log(("%s: Could not register netfilter hooks!\n", __FUNCTION__));
       goto out;
    } else {
-      CommOS_Debug(("%s: Registered netfilter hooks.\n", __func__));
+      CommOS_Debug(("%s: Registered netfilter hooks.\n", __FUNCTION__));
    }
    hooksRegistered = 1;
 #else
-   CommOS_Log(("%s: Netfilter hooks disabled.\n", __func__));
+   CommOS_Log(("%s: Netfilter hooks disabled.\n", __FUNCTION__));
 #endif
 
    CommOS_MutexInit(&globalLock);
@@ -1272,7 +1267,7 @@ Init(void *args)
       pvtcpLoopbackOffAddr = GetLoopbackAddr();
       if (pvtcpLoopbackOffAddr == -1U) {
          CommOS_Log(("%s: Could not allocate offload loopback address!\n",
-                     __func__));
+                     __FUNCTION__));
          rc = -1;
          CommSvc_UnregisterImpl(&pvtcpImpl);
       }
@@ -1301,11 +1296,11 @@ Exit(void)
 #if !defined(PVTCP_DISABLE_NETFILTER)
    if (hooksRegistered) {
       nf_unregister_hooks(netfilterHooks, ARRAY_SIZE(netfilterHooks));
-      CommOS_Debug(("%s: Netfilter hooks unregistered.\n", __func__));
+      CommOS_Debug(("%s: Netfilter hooks unregistered.\n", __FUNCTION__));
    }
 #endif
    CommOS_Log(("%s: Allocations of large datagrams: %llu.\n",
-               __func__, pvtcpOffDgramAllocations));
+               __FUNCTION__, pvtcpOffDgramAllocations));
 }
 
 
@@ -1332,7 +1327,7 @@ DestructCB(struct sock *sk)
        (pvsk->destruct == asmDestructorShim)) {
       /* Module put _not_ to be performed by asmDestructorShim. */
 
-      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __func__));
+      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __FUNCTION__));
       return -1;
    }
 
@@ -1347,7 +1342,6 @@ DestructCB(struct sock *sk)
    if (pvsk->rpcReply) {
       CommOS_Kfree(pvsk->rpcReply);
    }
-
    CommOS_Kfree(pvsk);
 
    /*
@@ -1372,7 +1366,7 @@ StateChangeCB(struct sock *sk)
    if (!pvsk ||
        (SkFromPvsk(pvsk) != sk) ||
        (pvsk->stateChange == StateChangeCB)) {
-      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __func__));
+      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __FUNCTION__));
       return;
    }
 
@@ -1381,7 +1375,7 @@ StateChangeCB(struct sock *sk)
     */
 
    CommOS_Debug(("%s: [0x%p] sk_state [%u] sk_err [%d] sk_err_soft [%d].\n",
-                 __func__, pvsk, sk->sk_state,
+                 __FUNCTION__, pvsk, sk->sk_state,
                  sk->sk_err, sk->sk_err_soft));
    if (pvsk->stateChange) {
       pvsk->stateChange(sk);
@@ -1407,7 +1401,7 @@ ErrorReportCB(struct sock *sk)
    if (!pvsk ||
        (SkFromPvsk(pvsk) != sk) ||
        (pvsk->errorReport == ErrorReportCB)) {
-      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored\n", __func__));
+      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored\n", __FUNCTION__));
       return;
    }
 
@@ -1423,7 +1417,7 @@ ErrorReportCB(struct sock *sk)
     */
 
    CommOS_Debug(("%s: [0x%p] sk_err [%d] sk_err_soft [%d].\n",
-                 __func__, pvsk, sk->sk_err, sk->sk_err_soft));
+                 __FUNCTION__, pvsk, sk->sk_err, sk->sk_err_soft));
    if (pvsk->errorReport) {
       pvsk->errorReport(sk);
    }
@@ -1449,7 +1443,7 @@ DataReadyCB(struct sock *sk,
    if (!pvsk ||
        (SkFromPvsk(pvsk) != sk) ||
        (pvsk->dataReady == DataReadyCB)) {
-      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __func__));
+      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __FUNCTION__));
       return;
    }
 
@@ -1462,7 +1456,7 @@ DataReadyCB(struct sock *sk,
    }
    if (sk->sk_state == TCP_LISTEN) {
       CommOS_Debug(("%s: Listen socket ready to accept [0x%p].\n",
-                    __func__, pvsk));
+                    __FUNCTION__, pvsk));
    }
    PvtcpSchedSock(pvsk);
 }
@@ -1482,7 +1476,7 @@ WriteSpaceCB(struct sock *sk)
    if (!pvsk ||
        (SkFromPvsk(pvsk) != sk) ||
        (pvsk->writeSpace == WriteSpaceCB)) {
-      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __func__));
+      CommOS_Debug(("%s: pvsk / sk inconsistency. Ignored.\n", __FUNCTION__));
       return;
    }
 
@@ -1513,7 +1507,6 @@ SockAllocInit(struct socket *sock,
               PvtcpSock *parentPvsk)
 {
    struct sock *sk;
-   struct inode *inode;
    PvtcpSock *pvsk;
    int sndBuf = PVTCP_SOCK_RCVSIZE * 4;
 
@@ -1524,7 +1517,7 @@ SockAllocInit(struct socket *sock,
    sk = sock->sk;
    sk->sk_user_data = NULL;
 
-   pvsk = CommOS_Kmalloc(sizeof(*pvsk));
+   pvsk = CommOS_Kmalloc(sizeof *pvsk);
    if (!pvsk) {
       return -ENOMEM;
    }
@@ -1538,13 +1531,6 @@ SockAllocInit(struct socket *sock,
     * PVTCP sockets should be billed against the vmware uid.
     */
    sk->sk_socket->file = &_file;
-
-   /*
-    * Fill socket inode with vmware's uid and gid.
-    */
-   inode = SOCK_INODE(sock);
-   inode->i_uid = _cred.fsuid;
-   inode->i_gid = _cred.fsgid;
 
    /* Set peer (pv) socket. */
    pvsk->peerSock = peerSock;
@@ -1611,7 +1597,7 @@ SockAllocInit(struct socket *sock,
     */
 
    kernel_setsockopt(sock, SOL_SOCKET, SO_SNDBUFFORCE,
-                     (void *)&sndBuf, sizeof(sndBuf));
+                     (void *)&sndBuf, sizeof sndBuf);
 
    return 0;
 }
@@ -1636,7 +1622,7 @@ SockAllocErrInit(int err,
       return NULL;
    }
 
-   pvsk = CommOS_Kmalloc(sizeof(*pvsk));
+   pvsk = CommOS_Kmalloc(sizeof *pvsk);
    if (!pvsk) {
       return NULL;
    }
@@ -1688,7 +1674,7 @@ PvtcpCreateOp(CommChannel channel,
 
 #if defined(PVTCP_IPV6_DISABLE)
    if (packet->data16 == AF_INET6) {
-      CommOS_Debug(("%s: AF_INET6 support is disabled.\n", __func__));
+      CommOS_Debug(("%s: AF_INET6 support is disabled.\n", __FUNCTION__));
       rc = -EAFNOSUPPORT;
    } else
 #endif
@@ -1704,7 +1690,7 @@ PvtcpCreateOp(CommChannel channel,
          goto fail;
       }
       kernel_setsockopt(sock, SOL_SOCKET, SO_REUSEADDR,
-                        (void *)&enable, sizeof(enable));
+                        (void *)&enable, sizeof enable);
       pvsk = PvskFromSk(sock->sk);
       if (state->extra &&
           ((PvtcpStateKObj *)(state->extra))->useNS) {
@@ -1716,7 +1702,7 @@ PvtcpCreateOp(CommChannel channel,
       PvskSetOpFlag(pvsk, PVTCP_OP_CREATE);
    } else {
       CommOS_Debug(("%s: Error creating offload socket: %d\n",
-                    __func__, rc));
+                    __FUNCTION__, rc));
       /*
        * Pass -rc so we follow error conventions for other reply ops.
        * The error code is fixed by the PV side so error codes are properly
@@ -1735,7 +1721,7 @@ fail:
    CommOS_Log(("%s: BOOG ** FAILED TO CREATE OFFLOAD SOCKET [%d] "
                "_AND_ ERROR REPORTING SOCKET!\n"
                " PV SIDE MAY BE LOCKED UP UNTIL CREATE RPC TIMES OUT!",
-               __func__, rc));
+               __FUNCTION__, rc));
 }
 
 
@@ -1771,18 +1757,18 @@ PvtcpReleaseOp(CommChannel channel,
 
       if (sk->sk_family == AF_INET) {
          struct sockaddr_in sin = { .sin_family = AF_INET };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
-         if (!kernel_getsockname(sk->sk_socket,
-                                 (struct sockaddr *)&sin, &addrLen)) {
+         if(!kernel_getsockname(sk->sk_socket,
+                                (struct sockaddr *)&sin, &addrLen)) {
             port = sin.sin_port;
          }
       } else { /* AF_INET6 */
          struct sockaddr_in6 sin = { .sin6_family = AF_INET6 };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
-         if (!kernel_getsockname(sk->sk_socket,
-                                 (struct sockaddr *)&sin, &addrLen)) {
+         if(!kernel_getsockname(sk->sk_socket,
+                                (struct sockaddr *)&sin, &addrLen)) {
             port = sin.sin6_port;
          }
       }
@@ -1796,17 +1782,15 @@ PvtcpReleaseOp(CommChannel channel,
    }
 
    /*
-    * - remove the pvsk from the state, so the state destructor can't find it
-    *   (the state destructor cannot run while operations are in-flight).
     * - hold the socket before setting the 'release' flag and until after
     *   the call to PvtcpSchedSock(): if the socket had already been scheduled
     *   ReleaseAIO may run, find the flag set and release this socket while
     *   it's being unlocked here.
+    *
     * - hold the dispatch lock until done to ensure that subsequent Ops for
     *   this socket see peerSockSet == 0.
     */
 
-   PvtcpStateRemoveSocket(pvsk->channel, pvsk);
    PvtcpHoldSock(pvsk);
    SOCK_STATE_LOCK(pvsk);
    pvsk->peerSockSet = 0;
@@ -1863,16 +1847,16 @@ PvtcpBindOp(CommChannel channel,
 
       reuseAddr--;
       kernel_setsockopt(sk->sk_socket, SOL_SOCKET, SO_REUSEADDR,
-                        (void *)&reuseAddr, sizeof(reuseAddr));
+                        (void *)&reuseAddr, sizeof reuseAddr);
    }
 
    if (sk->sk_family == AF_INET) {
-      memset(&sin, 0, sizeof(sin));
+      memset(&sin, 0, sizeof sin);
       sin.sin_family = AF_INET;
       sin.sin_port = packet->data16;
       sin.sin_addr.s_addr = (unsigned int)packet->data64ex;
       addr = (struct sockaddr *)&sin;
-      addrLen = sizeof(sin);
+      addrLen = sizeof sin;
 
       rc = PvtcpTestAndBindLoopbackInet4(pvsk, &sin.sin_addr.s_addr,
                                          sin.sin_port);
@@ -1883,11 +1867,11 @@ PvtcpBindOp(CommChannel channel,
          goto out;
       }
    } else { /* AF_INET6 */
-      memset(&sin6, 0, sizeof(sin6));
+      memset(&sin6, 0, sizeof sin6);
       sin6.sin6_family = AF_INET6;
       sin6.sin6_port = packet->data16;
       addr = (struct sockaddr *)&sin6;
-      addrLen = sizeof(sin6);
+      addrLen = sizeof sin6;
 
       rc = PvtcpTestAndBindLoopbackInet6(pvsk, &packet->data64ex,
                                          &packet->data64ex2, sin6.sin6_port);
@@ -1930,7 +1914,7 @@ PvtcpSetSockOptOp(CommChannel channel,
    PvtcpSock *pvsk = PvtcpGetPvskOrReturn(packet->data64, upperLayerState);
    struct sock *sk = SkFromPvsk(pvsk);
    struct socket *sock = sk->sk_socket;
-   unsigned int optlen = packet->len - sizeof(*packet);
+   unsigned int optlen = packet->len - sizeof *packet;
 
    PvtcpHoldSock(pvsk);
 
@@ -1952,12 +1936,12 @@ PvtcpSetSockOptOp(CommChannel channel,
 
       switch (packet->data32ex) {
       case TCP_NODELAY:
-         memcpy(&on, vec[0].iov_base, sizeof(on));
+         memcpy(&on, vec[0].iov_base, sizeof on);
          PvskSetFlag(pvsk, PVTCP_OFF_PVSKF_TCP_NODELAY, on);
          pvsk->rpcStatus = 0;
          goto out;
       case TCP_CORK:
-         memcpy(&on, vec[0].iov_base, sizeof(on));
+         memcpy(&on, vec[0].iov_base, sizeof on);
          PvskSetFlag(pvsk, PVTCP_OFF_PVSKF_TCP_CORK, on);
          pvsk->rpcStatus = 0;
          goto out;
@@ -2025,12 +2009,12 @@ PvtcpGetSockOptOp(CommChannel channel,
       switch (packet->data32ex) {
       case TCP_NODELAY:
          on = PvskTestFlag(pvsk, PVTCP_OFF_PVSKF_TCP_NODELAY);
-         optLen = sizeof(on);
+         optLen = sizeof on;
          memcpy(optBuf, &on, optLen);
          goto done;
       case TCP_CORK:
          on = PvskTestFlag(pvsk, PVTCP_OFF_PVSKF_TCP_CORK);
-         optLen = sizeof(on);
+         optLen = sizeof on;
          memcpy(optBuf, &on, optLen);
          goto done;
       }
@@ -2206,8 +2190,8 @@ PvtcpConnectOp(CommChannel channel,
 
    if (sk->sk_family == AF_INET) {
       addr = (struct sockaddr *)&sin;
-      addrLen = sizeof(sin);
-      memset(&sin, 0, sizeof(sin));
+      addrLen = sizeof sin;
+      memset(&sin, 0, sizeof sin);
       sin.sin_port = packet->data16;
       sin.sin_addr.s_addr = (unsigned int)packet->data64ex;
       if (COMM_OPF_GET_VAL(packet->flags)) {
@@ -2219,8 +2203,8 @@ PvtcpConnectOp(CommChannel channel,
       PvtcpTestAndBindLoopbackInet4(pvsk, &sin.sin_addr.s_addr, 0);
    } else { /* AF_INET6 */
       addr = (struct sockaddr *)&sin6;
-      addrLen = sizeof(sin6);
-      memset(&sin6, 0, sizeof(sin6));
+      addrLen = sizeof sin6;
+      memset(&sin6, 0, sizeof sin6);
       sin6.sin6_port = packet->data16;
       if (COMM_OPF_GET_VAL(packet->flags)) {
          sin6.sin6_family = AF_UNSPEC;
@@ -2317,7 +2301,7 @@ ReleaseAIO(PvtcpSock *pvsk)
    struct sock *sk = SkFromPvsk(pvsk);
    struct socket *sock = sk->sk_socket;
    CommPacket packet = {
-      .len = sizeof(packet),
+      .len = sizeof packet,
       .flags = 0,
       .opCode = PVTCP_OP_RELEASE,
       .data64 = pvsk->peerSock,
@@ -2329,13 +2313,15 @@ ReleaseAIO(PvtcpSock *pvsk)
    CommSvc_Write(pvsk->channel, &packet, &timeout);
 #if defined(PVTCP_FULL_DEBUG)
    CommOS_Debug(("%s: Sent 'Release' [0x%p] -> 0x%0x] reply.\n",
-                 __func__, pvsk, (unsigned)(pvsk->peerSock)));
+                 __FUNCTION__, pvsk, (unsigned)(pvsk->peerSock)));
 #endif
    /*
     * 'sk' goes away in the final ProcessAIO::sock_put()
     */
    SockReleaseWrapper(sock);
    SOCK_OUT_UNLOCK(pvsk);
+
+   PvtcpStateRemoveSocket(pvsk->channel, pvsk);
 }
 
 
@@ -2351,7 +2337,7 @@ CreateAIO(PvtcpSock *pvsk)
    struct sock *sk;
    struct socket *sock;
    CommPacket packet = {
-      .len = sizeof(packet),
+      .len = sizeof packet,
       .flags = 0,
       .opCode = PVTCP_OP_CREATE,
       .data64 = pvsk->peerSock,
@@ -2380,11 +2366,11 @@ CreateAIO(PvtcpSock *pvsk)
       PvtcpStateRemoveSocket(pvsk->channel, pvsk);
       SockReleaseWrapper(sock);
       CommOS_Log(("%s: BOOG -- Couldn't send 'Create' reply [0x%p]!\n",
-                  __func__, sk));
+                  __FUNCTION__, sk));
    } else {
 #if defined(PVTCP_FULL_DEBUG)
       CommOS_Debug(("%s: Sent 'Create' [0x%p] reply [%d].\n",
-                    __func__, pvsk, rc));
+                    __FUNCTION__, pvsk, rc));
 #endif
    }
 }
@@ -2402,7 +2388,7 @@ BindAIO(PvtcpSock *pvsk)
    struct sock *sk = SkFromPvsk(pvsk);
    struct socket *sock = sk->sk_socket;
    CommPacket packet = {
-      .len = sizeof(packet),
+      .len = sizeof packet,
       .flags = 0,
       .opCode = PVTCP_OP_BIND,
       .data64 = pvsk->peerSock
@@ -2413,7 +2399,7 @@ BindAIO(PvtcpSock *pvsk)
    if (pvsk->peerSockSet) {
       if (sk->sk_family == AF_INET) {
          struct sockaddr_in sin = { .sin_family = AF_INET };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
          rc = kernel_getsockname(sock, (struct sockaddr *)&sin, &addrLen);
          if (rc == 0) {
@@ -2423,7 +2409,7 @@ BindAIO(PvtcpSock *pvsk)
          }
       } else { /* AF_INET6 */
          struct sockaddr_in6 sin = { .sin6_family = AF_INET6 };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
          rc = kernel_getsockname(sock, (struct sockaddr *)&sin, &addrLen);
          if (rc == 0) {
@@ -2442,7 +2428,7 @@ BindAIO(PvtcpSock *pvsk)
       CommSvc_Write(pvsk->channel, &packet, &timeout);
 #if defined(PVTCP_FULL_DEBUG)
       CommOS_Debug(("%s: Sent 'Bind' [0x%p, %d] reply.\n",
-                    __func__, pvsk, rc));
+                    __FUNCTION__, pvsk, rc));
 #endif
    }
 }
@@ -2460,7 +2446,7 @@ SetSockOptAIO(PvtcpSock *pvsk)
    CommPacket packet;
    unsigned long long timeout;
 
-   packet.len    = sizeof(packet);
+   packet.len    = sizeof packet;
    packet.flags  = 0;
    packet.opCode = PVTCP_OP_SETSOCKOPT;
    packet.data64 = pvsk->peerSock;
@@ -2481,7 +2467,6 @@ static inline void
 GetSockOptAIO(PvtcpSock *pvsk)
 {
    CommPacket packet = {
-      .len = sizeof(packet),
       .opCode = PVTCP_OP_GETSOCKOPT,
       .flags = 0
    };
@@ -2493,7 +2478,7 @@ GetSockOptAIO(PvtcpSock *pvsk)
    unsigned int iovOffset = 0;
 
    if (pvsk->rpcStatus > 0) {
-      packet.len = sizeof(packet) + pvsk->rpcStatus;
+      packet.len = sizeof packet + pvsk->rpcStatus;
       vec[0].iov_base = pvsk->rpcReply;
       vec[0].iov_len = pvsk->rpcStatus;
    } else {
@@ -2504,7 +2489,7 @@ GetSockOptAIO(PvtcpSock *pvsk)
    packet.data32 = pvsk->rpcStatus;
 
    CommSvc_WriteVec(pvsk->channel, &packet, &inVec, &vecLen,
-                    &timeout, &iovOffset, 1);
+                    &timeout, &iovOffset);
 
    if (pvsk->rpcReply) {
       CommOS_Kfree(pvsk->rpcReply);
@@ -2524,7 +2509,7 @@ static inline void
 IoctlAIO(PvtcpSock *pvsk)
 {
    CommPacket packet = {
-      .len = sizeof(packet),
+      .len = sizeof packet,
       .opCode = PVTCP_OP_IOCTL,
       .flags = 0
    };
@@ -2548,7 +2533,7 @@ ListenAIO(PvtcpSock *pvsk)
 {
    struct sock *sk = SkFromPvsk(pvsk);
    CommPacket packet = {
-      .len = sizeof(packet),
+      .len = sizeof packet,
       .flags = 0,
       .opCode = PVTCP_OP_LISTEN,
       .data64 = pvsk->peerSock
@@ -2564,7 +2549,7 @@ ListenAIO(PvtcpSock *pvsk)
 
       CommSvc_Write(pvsk->channel, &packet, &timeout);
 #if defined(PVTCP_FULL_DEBUG)
-      CommOS_Debug(("%s: Sent 'Listen' [0x%p] reply.\n", __func__, pvsk));
+      CommOS_Debug(("%s: Sent 'Listen' [0x%p] reply.\n", __FUNCTION__, pvsk));
 #endif
    }
 }
@@ -2582,7 +2567,7 @@ AcceptAIO(PvtcpSock *pvsk)
    struct sock *sk = SkFromPvsk(pvsk);
    struct socket *sock = sk->sk_socket;
    CommPacket packet = {
-      .len = sizeof(packet),
+      .len = sizeof packet,
       .flags = 0,
       .opCode = PVTCP_OP_ACCEPT
    };
@@ -2593,13 +2578,13 @@ AcceptAIO(PvtcpSock *pvsk)
    if (pvsk->peerSockSet) {
       unsigned long long payloadSocks[2] = { 0, 0 };
       struct kvec payloadVec[] = {
-         { .iov_base = &payloadSocks, .iov_len = sizeof(payloadSocks) }
+         { .iov_base = &payloadSocks, .iov_len = sizeof payloadSocks }
       };
       struct kvec *payload = payloadVec;
       unsigned int payloadLen = 1;
       unsigned int iovOffset = 0;
 
-      packet.len = sizeof(packet) + sizeof(payloadSocks);
+      packet.len = sizeof packet + sizeof payloadSocks;
 
       /*
        * accept() succeeded, so this is the child socket; its state field
@@ -2618,7 +2603,7 @@ AcceptAIO(PvtcpSock *pvsk)
       rc = 0;
       if (sk->sk_family == AF_INET) {
          struct sockaddr_in sin = { .sin_family = AF_INET };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
          rc = kernel_getpeername(sock, (struct sockaddr *)&sin, &addrLen);
          if (rc == 0) {
@@ -2628,7 +2613,7 @@ AcceptAIO(PvtcpSock *pvsk)
          }
       } else { /* AF_INET6 */
          struct sockaddr_in6 sin = { .sin6_family = AF_INET6 };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
          rc = kernel_getpeername(sock, (struct sockaddr *)&sin, &addrLen);
          if (rc == 0) {
@@ -2641,22 +2626,22 @@ AcceptAIO(PvtcpSock *pvsk)
 
       if (rc == 0) {
          kernel_setsockopt(sock, SOL_TCP, TCP_NODELAY,
-                           (void *)&enable, sizeof(enable));
+                           (void *)&enable, sizeof enable);
          kernel_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE,
-                           (void *)&enable, sizeof(enable));
+                           (void *)&enable, sizeof enable);
          kernel_setsockopt(sock, SOL_SOCKET, SO_OOBINLINE,
-                           (void *)&enable, sizeof(enable));
+                           (void *)&enable, sizeof enable);
       } else {
          PvtcpStateRemoveSocket(pvsk->channel, pvsk);
          SockReleaseWrapper(sock);
          COMM_OPF_SET_ERR(packet.flags);
          packet.data32ex = (unsigned int)ECONNABORTED;
-         packet.len = sizeof(packet);
+         packet.len = sizeof packet;
          packet.opCode = PVTCP_OP_FLOW;
       }
 
       rc = CommSvc_WriteVec(pvsk->channel, &packet,
-                            &payload, &payloadLen, &timeout, &iovOffset, 1);
+                            &payload, &payloadLen, &timeout, &iovOffset);
       if ((rc != packet.len) && !COMM_OPF_TEST_ERR(packet.flags)) {
          /* Mustn't leak the new socket if PV can't get a hold of it. */
 
@@ -2664,7 +2649,7 @@ AcceptAIO(PvtcpSock *pvsk)
          SockReleaseWrapper(sock);
       }
 #if defined(PVTCP_FULL_DEBUG)
-      CommOS_Debug(("%s: Sent 'Accept' [0x%p] reply.\n", __func__, pvsk));
+      CommOS_Debug(("%s: Sent 'Accept' [0x%p] reply.\n", __FUNCTION__, pvsk));
 #endif
    }
 }
@@ -2682,7 +2667,7 @@ ConnectAIO(PvtcpSock *pvsk)
    struct sock *sk = SkFromPvsk(pvsk);
    struct socket *sock = sk->sk_socket;
    CommPacket packet = {
-      .len = sizeof(packet),
+      .len = sizeof packet,
       .flags = 0,
       .opCode = PVTCP_OP_CONNECT,
       .data64 = pvsk->peerSock
@@ -2703,7 +2688,7 @@ ConnectAIO(PvtcpSock *pvsk)
    } else if (sk->sk_state == TCP_ESTABLISHED) {
       if (sk->sk_family == AF_INET) {
          struct sockaddr_in sin = { .sin_family = AF_INET };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
          rc = kernel_getsockname(sock, (struct sockaddr *)&sin, &addrLen);
          if (rc == 0) {
@@ -2713,7 +2698,7 @@ ConnectAIO(PvtcpSock *pvsk)
          }
       } else { /* AF_INET6 */
          struct sockaddr_in6 sin = { .sin6_family = AF_INET6 };
-         int addrLen = sizeof(sin);
+         int addrLen = sizeof sin;
 
          rc = kernel_getsockname(sock, (struct sockaddr *)&sin, &addrLen);
          if (rc == 0) {
@@ -2726,11 +2711,11 @@ ConnectAIO(PvtcpSock *pvsk)
 
       if (rc == 0) {
          kernel_setsockopt(sock, SOL_TCP, TCP_NODELAY,
-                           (void *)&enable, sizeof(enable));
+                           (void *)&enable, sizeof enable);
          kernel_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE,
-                           (void *)&enable, sizeof(enable));
+                           (void *)&enable, sizeof enable);
          kernel_setsockopt(sock, SOL_SOCKET, SO_OOBINLINE,
-                           (void *)&enable, sizeof(enable));
+                           (void *)&enable, sizeof enable);
       } else {
          COMM_OPF_SET_ERR(packet.flags);
          packet.data32ex = ECONNABORTED;
@@ -2740,7 +2725,7 @@ ConnectAIO(PvtcpSock *pvsk)
 
    CommSvc_Write(pvsk->channel, &packet, &timeout);
 #if defined(PVTCP_FULL_DEBUG)
-   CommOS_Debug(("%s: Sent 'Connect' [0x%p] reply.\n", __func__, pvsk));
+   CommOS_Debug(("%s: Sent 'Connect' [0x%p] reply.\n", __FUNCTION__, pvsk));
 #endif
 }
 
@@ -2783,7 +2768,7 @@ PvtcpProcessAIO(CommOSWork *arg)
          /* Input processing. */
 
          /*
-          * Workqueue handlers are pinned to CPU cores and therefore not
+          * Workqueue handlers are pinned to a CPU core and therefore not
           * migratable. No need to disable preemption.
           */
          err = PvtcpInputAIO(pvsk, perCpuBuf[smp_processor_id()]);
@@ -2871,4 +2856,3 @@ doneInUnlock:
 
    PvtcpPutSock(pvsk);
 }
-

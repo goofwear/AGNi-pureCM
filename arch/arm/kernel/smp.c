@@ -66,9 +66,6 @@ int __cpuinit __cpu_up(unsigned int cpu)
 	struct cpuinfo_arm *ci = &per_cpu(cpu_data, cpu);
 	struct task_struct *idle = ci->idle;
 	pgd_t *pgd;
-#if defined(CONFIG_MACH_Q1_BD)
-	static pgd_t *s_pgd[CONFIG_NR_CPUS];
-#endif
 	int ret;
 
 	/*
@@ -96,12 +93,7 @@ int __cpuinit __cpu_up(unsigned int cpu)
 	 * of our "standard" page tables, with the addition of
 	 * a 1:1 mapping for the physical address of the kernel.
 	 */
-#if defined(CONFIG_MACH_Q1_BD)
-	s_pgd[cpu] = s_pgd[cpu] ?: pgd_alloc(&init_mm);
-	pgd = s_pgd[cpu];
-#else
 	pgd = pgd_alloc(&init_mm);
-#endif
 	if (!pgd)
 		return -ENOMEM;
 
@@ -154,9 +146,7 @@ int __cpuinit __cpu_up(unsigned int cpu)
 		identity_mapping_del(pgd, __pa(_sdata), __pa(_edata));
 	}
 
-#if !defined(CONFIG_MACH_Q1_BD)
 	pgd_free(&init_mm, pgd);
-#endif
 
 	return ret;
 }
@@ -319,6 +309,8 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	atomic_inc(&mm->mm_count);
 	current->active_mm = mm;
 	cpumask_set_cpu(cpu, mm_cpumask(mm));
+
+	printk("CPU%u: Booted secondary processor\n", cpu);
 
 	printk("CPU%u: Booted secondary processor\n", cpu);
 

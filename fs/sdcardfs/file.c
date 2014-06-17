@@ -232,7 +232,7 @@ static int sdcardfs_open(struct inode *inode, struct file *file)
 		kfree(SDCARDFS_F(file));
 	else {
 		fsstack_copy_attr_all(inode, sdcardfs_lower_inode(inode));
-		fix_fat_permission(inode);
+		fix_fat_permission(inode); 
 	}
 out_err:
 	return err;

@@ -45,7 +45,7 @@
  */
 #define LOWER_FS_MIN_FREE_SIZE  (20*1048576UL) /* 20MB */
 
-/* temporary static uid settings for development */
+/* temporary static uid settings for development */ 
 #define AID_ROOT             0  /* uid for accessing /mnt/sdcard & extSdcard */
 #define AID_SDCARD_RW     1015  /* gid for accessing /mnt/sdcard & extSdcard */
 #define AID_MEDIA_RW      1023  /* uid/gid for accessing underlying FS (=ext4)*/
@@ -57,7 +57,7 @@
 			(x) = ((x) & S_IFMT) | 00775; 	\
 		else					\
 			(x) = ((x) & S_IFMT) | 00664; 	\
-	} while (0)
+	} while (0)	
 
 #define fix_fat_permission(x)		\
 	do {					\
@@ -66,13 +66,13 @@
 		fix_mode((x)->i_mode);		\
 	} while (0)
 
-/* OVERRIDE_CRED() and REVERT_CRED()
- * 	OVERRID_CRED()
+/* OVERRIDE_CRED() and REVERT_CRED() 
+ * 	OVERRID_CRED() 
  * 		backup original task->cred
  * 		and modifies task->cred->fsuid/fsgid to specified value.
  *	REVERT_CRED()
  * 		restore original task->cred->fsuid/fsgid.
- * These two macro should be used in pair, and OVERRIDE_CRED() should be
+ * These two macro should be used in pair, and OVERRIDE_CRED() should be 
  * placed at the beginning of a function, right after variable declaration.
  */
 #define OVERRIDE_CRED(sdcardfs_sbi) 		\
@@ -91,7 +91,7 @@
 	printk("KAKJAGI: %s:%d fsuid %d fsgid %d\n", 	\
 		__FUNCTION__, __LINE__, 		\
 		(int)current->cred->fsuid, 		\
-		(int)current->cred->fsgid);
+		(int)current->cred->fsgid); 
 
 struct sdcardfs_sb_info;
 struct sdcardfs_mount_options;

@@ -22,12 +22,3 @@ config VMWARE_MVP_DEBUG
 	 Say Y here to enable debug on kernel modules
 	 for VMware's Mobile Virtualization Platform.
 	 This should be enabled for eng or userdebug builds.
-
-config VMWARE_PVTCP_DEBUG
-       bool "Enable debug for VMware PVTCP modules"
-       depends on VMWARE_MVP_DEBUG
-       help
-	 Say Y here to enable debug on the PVTCP networking
-	 kernel modules for VMware's Mobile Virtualization
-	 Platform. This should only be enabled for eng or
-	 userdebug builds.

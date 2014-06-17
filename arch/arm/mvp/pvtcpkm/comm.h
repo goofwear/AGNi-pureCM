@@ -1,7 +1,7 @@
 /*
  * Linux 2.6.32 and later Kernel module for VMware MVP PVTCP Server
  *
- * Copyright (C) 2010-2012 VMware, Inc. All rights reserved.
+ * Copyright (C) 2010-2013 VMware, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -65,10 +65,10 @@
  */
 
 typedef struct CommPacket {
-   unsigned int len;                        // Total length
-   unsigned char flags;                     // Operation flags
-   unsigned char opCode;                    // Operation to call
-   unsigned short data16;                   // Auxiliary data
+   unsigned int len;                        /* Total length */
+   unsigned char flags;                     /* Operation flags */
+   unsigned char opCode;                    /* Operation to call */
+   unsigned short data16;                   /* Auxiliary data */
    unsigned long long data64;
    unsigned long long data64ex;
    union {
@@ -114,7 +114,13 @@ typedef struct CommImpl {
    int (*checkArgs)(CommTranspInitArgs *transpArgs);
    void *(*stateCtor)(CommChannel channel);
    void (*stateDtor)(void *state);
-   void *(*dataAlloc)(unsigned int dataLen);
+   void *(*dataAlloc)(unsigned int size,
+                      CommChannel channel,
+                      CommPacket *header,
+                      int (*copyFromChannel)(CommChannel channel,
+                                             void *dest,
+                                             unsigned int size,
+                                             int kern));
    void (*dataFree)(void *data);
    const CommOperationFunc *operations;
    void (*closeNtf)(void *closeNtfData,
@@ -163,9 +169,11 @@ Comm_WriteVec(CommChannel channel,
               struct kvec **vec,
               unsigned int *vecLen,
               unsigned long long *timeoutMillis,
-              unsigned int *iovOffset);
+              unsigned int *iovOffset,
+              int kern);
 
 unsigned int Comm_RequestInlineEvents(CommChannel channel);
 unsigned int Comm_ReleaseInlineEvents(CommChannel channel);
 
-#endif // _COMM_H_
+#endif /* _COMM_H_ */
+

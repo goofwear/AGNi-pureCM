@@ -1272,7 +1272,7 @@ static unsigned short tune_auto_camera[] = {
 // Yank555.lu : hijack profile (use natural as base)
 static unsigned short tune_hijack[] = {
 	0x0000, 0x0000, /*( 0, 1) BANK 0*/
-	0x0008, 0x00a4, /*( 2, 3) Dither8 UC4 ABC2 CP1 | CC8 MCM4 SCR2 SCC1 | CS8 DE4 DNR2 HDR1*/
+	0x0008, 0x00ac, /*( 2, 3) Dither8 UC4 ABC2 CP1 | CC8 MCM4 SCR2 SCC1 | CS8 DE4 DNR2 HDR1*/
 	0x0030, 0x0000, /*( 4, 5) FA cs1 de8 hdr2 fa1*/
 	0x0092, 0x0020, /*( 6, 7) DE pe*/
 	0x0093, 0x0020, /*( 8, 9) DE pf*/
@@ -1282,31 +1282,35 @@ static unsigned short tune_hijack[] = {
 	0x0097, 0x0020, /*(16,17) DE nb*/
 	0x0098, 0x1000, /*(18,19) DE max ratio*/
 	0x0099, 0x0100, /*(20,21) DE min ratio*/
-	0x00e1, 0xf01d, /*(22,23) SCR RrCr*/
-	0x00e2, 0x13f1, /*(24,25) SCR RgCg*/
-	0x00e3, 0x0fde, /*(26,27) SCR RbCb*/
-	0x00e4, 0x14fb, /*(28,29) SCR GrMr*/
-	0x00e5, 0xe717, /*(30,31) SCR GgMg*/
-	0x00e6, 0x00e7, /*(32,33) SCR GbMb*/
-	0x00e7, 0x1cf0, /*(34,35) SCR BrYr*/
-	0x00e8, 0x0cf2, /*(36,37) SCR BgYg*/
-	0x00e9, 0xe827, /*(38,39) SCR BbYb*/
-	0x00ea, 0x00ff, /*(40,41) SCR KrWr*/
-	0x00eb, 0x00f8, /*(42,43) SCR KgWg*/
-	0x00ec, 0x00f1, /*(44,45) SCR KbWb*/
-	0x0000, 0x0001, /*(46,47) BANK 1*/
-	0x001f, 0x0080, /*(48,49) CC chsel strength*/
-	0x0020, 0x0000, /*(50,51) CC lut r	 0*/
-	0x0021, 0x0290, /*(52,53) CC lut r	16 144*/
-	0x0022, 0x20a0, /*(54,55) CC lut r	32 160*/
-	0x0023, 0x30b0, /*(56,57) CC lut r	48 176*/
-	0x0024, 0x40c0, /*(58,59) CC lut r	64 192*/
-	0x0025, 0x50d0, /*(60,61) CC lut r	80 208*/
-	0x0026, 0x60e0, /*(62,63) CC lut r	96 224*/
-	0x0027, 0x70f0, /*(64,65) CC lut r 112 240*/
-	0x0028, 0x80ff, /*(66,67) CC lut r 128 255*/
-	0x00ff, 0x0000, /*(68,69) Mask Release*/
-	END_SEQ, 0x0000 /*(70,71)*/
+	0x00b0, 0x1010, /*(22,23) CS hg ry*/
+	0x00b1, 0x1010, /*(24,25) CS hg gc*/
+	0x00b2, 0x1010, /*(26,27) CS hg bm*/
+	0x00b3, 0x1804, /*(28,29) CS weight grayTH*/
+	0x00e1, 0xf01d, /*(30,31) SCR RrCr*/
+	0x00e2, 0x13f1, /*(32,33) SCR RgCg*/
+	0x00e3, 0x0fde, /*(34,35) SCR RbCb*/
+	0x00e4, 0x14fb, /*(36,37) SCR GrMr*/
+	0x00e5, 0xe717, /*(38,39) SCR GgMg*/
+	0x00e6, 0x00e7, /*(40,41) SCR GbMb*/
+	0x00e7, 0x1cf0, /*(42,43) SCR BrYr*/
+	0x00e8, 0x0cf2, /*(44,45) SCR BgYg*/
+	0x00e9, 0xe827, /*(46,47) SCR BbYb*/
+	0x00ea, 0x00ff, /*(48,49) SCR KrWr*/
+	0x00eb, 0x00f8, /*(50,51) SCR KgWg*/
+	0x00ec, 0x00f1, /*(52,53) SCR KbWb*/
+	0x0000, 0x0001, /*(54,55) BANK 1*/
+	0x001f, 0x0080, /*(56,57) CC chsel strength*/
+	0x0020, 0x0000, /*(58,59) CC lut r	 0*/
+	0x0021, 0x0290, /*(60,61) CC lut r	16 144*/
+	0x0022, 0x20a0, /*(62,63) CC lut r	32 160*/
+	0x0023, 0x30b0, /*(64,65) CC lut r	48 176*/
+	0x0024, 0x40c0, /*(66,67) CC lut r	64 192*/
+	0x0025, 0x50d0, /*(68,69) CC lut r	80 208*/
+	0x0026, 0x60e0, /*(70,71) CC lut r	96 224*/
+	0x0027, 0x70f0, /*(72,73) CC lut r 112 240*/
+	0x0028, 0x80ff, /*(74,75) CC lut r 128 255*/
+	0x00ff, 0x0000, /*(76,77) Mask Release*/
+	END_SEQ, 0x0000 /*(78,79)*/
 };
 #endif
 

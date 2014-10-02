@@ -53,6 +53,10 @@
 #include <plat/s5p-sysmmu.h>
 #endif
 
+#if defined(CONFIG_MACH_KONA) || defined(CONFIG_MACH_TAB3) || defined(CONFIG_MACH_T0)
+extern unsigned int lpcharge;
+#endif
+
 #if defined(CONFIG_S6D7AA0_LSL080AL02)
 static unsigned int fb_busfreq_table[S3C_FB_MAX_WIN + 1] = {
 	100100,
@@ -90,6 +94,9 @@ struct s3c_platform_fb *to_fb_plat(struct device *dev)
 }
 
 #ifndef CONFIG_FRAMEBUFFER_CONSOLE
+#define LPDDR1_BASE_ADDR		0x50000000
+#define BOOT_FB_BASE_ADDR		(LPDDR1_BASE_ADDR   + 0x0EC00000)	/* 0x5EC00000 from Bootloader */
+
 static unsigned int bootloaderfb;
 module_param_named(bootloaderfb, bootloaderfb, uint, 0444);
 MODULE_PARM_DESC(bootloaderfb, "Address of booting logo image in Bootloader");
@@ -1109,6 +1116,15 @@ int s3cfb_pan_display(struct fb_var_screeninfo *var, struct fb_info *fb)
 		if (win->id == pdata->default_win)
 			spin_unlock(&fbdev->slock);
 		return -EINVAL;
+	}
+#endif
+
+#if defined(CONFIG_MACH_KONA) || defined(CONFIG_MACH_TAB3) || defined(CONFIG_MACH_T0)
+	if (lpcharge) {
+		/* support LPM (off charging mode) display based on FBIOPAN_DISPLAY */
+		s3cfb_check_var(var, fb);
+		s3cfb_set_par(fb);
+		s3cfb_enable_window(fbdev, win->id);
 	}
 #endif
 

@@ -117,7 +117,7 @@ extern int __get_user_4(void *);
 		switch (sizeof(*(__p))) {				\
 		case 1:							\
 			__get_user_x(__r2, __p, __e, 1, "lr");		\
-	       		break;						\
+			break;						\
 		case 2:							\
 			__get_user_x(__r2, __p, __e, 2, "r3", "lr");	\
 			break;						\
@@ -145,8 +145,9 @@ extern int __put_user_8(void *, unsigned long long);
 
 #define put_user(x,p)							\
 	({								\
+		const typeof(*(p)) __user *__tmp_p = (p);		\
 		register const typeof(*(p)) __r2 asm("r2") = (x);	\
-		register const typeof(*(p)) __user *__p asm("r0") = (p);\
+		register const typeof(*(p)) __user *__p asm("r0") = __tmp_p; \
 		register int __e asm("r0");				\
 		switch (sizeof(*(__p))) {				\
 		case 1:							\

@@ -26,9 +26,13 @@
 #include <linux/if_arp.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
+#include <linux/suspend.h>
 #include <linux/kthread.h>
 
 #include <linux/platform_data/modem.h>
+#include <mach/gpio-exynos4.h>
+#include <plat/gpio-cfg.h>
+
 #include "modem_prj.h"
 #include "modem_link_device_spi.h"
 #include "modem_utils.h"
@@ -66,8 +70,7 @@ static irqreturn_t spi_srdy_irq_handler(int irq, void *p_ld)
 	if (!spild->boot_done)
 		return result;
 
-	if (!wake_lock_active(&spild->spi_wake_lock)
-		&&  spild->send_modem_spi != 1) {
+	if (!wake_lock_active(&spild->spi_wake_lock)) {
 		wake_lock(&spild->spi_wake_lock);
 		pr_debug("[SPI] [%s](%d) spi_wakelock locked . spild->spi_state[%d]\n",
 			__func__, __LINE__, (int)spild->spi_state);
@@ -131,8 +134,11 @@ static int spi_send
 		break;
 
 	case IPC_BOOT:
+/*
 		if (get_user(data, (u32 __user *)skb->data))
 			return -EFAULT;
+*/
+		memcpy ((char *)&data, (char *)skb->data, sizeof(data));
 
 		if (data == cmd_ready) {
 			p_spild->ril_send_modem_img = 1;
@@ -311,7 +317,7 @@ static void spi_prepare_tx_packet(void)
 
 	ld = &p_spild->ld;
 
-	for (i = 0; i < p_spild->max_ipc_dev; i++) {
+	for (i = 0; i < ld->max_ipc_dev; i++) {
 		while ((skb = skb_dequeue(ld->skb_txq[i]))) {
 			ret = spi_buff_write(p_spild, i, skb->data, skb->len);
 			if (!ret) {
@@ -331,7 +337,7 @@ static void spi_start_data_send(void)
 
 	ld = &p_spild->ld;
 
-	for (i = 0; i < p_spild->max_ipc_dev; i++) {
+	for (i = 0; i < ld->max_ipc_dev; i++) {
 		if (skb_queue_len(ld->skb_txq[i]) > 0)
 			spi_send_work(SPI_WORK_SEND, SPI_WORK);
 	}
@@ -345,6 +351,29 @@ static void spi_tx_work(void)
 	char *spi_sync_buf;
 
 	spild = p_spild;
+
+	s3c_gpio_cfgpin(spild->gpio_ipc_mrdy, S3C_GPIO_OUTPUT);
+	s3c_gpio_setpull(spild->gpio_ipc_mrdy, S3C_GPIO_PULL_NONE);
+
+	s3c_gpio_cfgpin(spild->gpio_ipc_sub_mrdy, S3C_GPIO_OUTPUT);
+	s3c_gpio_setpull(spild->gpio_ipc_sub_mrdy, S3C_GPIO_PULL_NONE);
+
+	gpio_direction_input(spild->gpio_ipc_srdy);
+	s3c_gpio_cfgpin(spild->gpio_ipc_srdy, S3C_GPIO_SFN(0xF));
+	s3c_gpio_setpull(spild->gpio_ipc_srdy, S3C_GPIO_PULL_DOWN);
+
+	gpio_direction_input(spild->gpio_ipc_sub_srdy);
+	s3c_gpio_cfgpin(spild->gpio_ipc_sub_srdy, S3C_GPIO_SFN(0xF));
+	s3c_gpio_setpull(spild->gpio_ipc_sub_srdy, S3C_GPIO_PULL_DOWN);
+
+	iod = link_get_iod_with_format(&spild->ld, IPC_FMT);
+	if (!iod) {
+		mif_err("no iodevice for modem control\n");
+		return;
+	}
+
+	if (iod->mc->phone_state == STATE_CRASH_EXIT)
+		return;
 
 	/* check SUB SRDY, SRDY state */
 	if (gpio_get_value(spild->gpio_ipc_sub_srdy) ==
@@ -365,7 +394,7 @@ static void spi_tx_work(void)
 	spild->spi_state = SPI_STATE_TX_WAIT;
 	spild->spi_timer_tx_state = SPI_STATE_TIME_START;
 
-	gpio_set_value(spild->gpio_ipc_mrdy, SPI_GPIOLEVEL_HIGH);
+	gpio_direction_output(spild->gpio_ipc_mrdy, SPI_GPIOLEVEL_HIGH);
 
 	/* Start TX timer */
 	spild->spi_tx_timer.expires =
@@ -381,7 +410,7 @@ static void spi_tx_work(void)
 
 			spild->spi_timer_tx_state = SPI_STATE_TIME_START;
 
-			gpio_set_value(spild->gpio_ipc_mrdy,
+			gpio_direction_output(spild->gpio_ipc_mrdy,
 				SPI_GPIOLEVEL_LOW);
 
 			/* change state SPI_STATE_TX_WAIT */
@@ -401,8 +430,8 @@ static void spi_tx_work(void)
 		spi_packet_buf = spild->buff;
 		spi_sync_buf = spild->sync_buff;
 
-		gpio_set_value(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_HIGH);
-		gpio_set_value(spild->gpio_ipc_mrdy, SPI_GPIOLEVEL_LOW);
+		gpio_direction_output(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_HIGH);
+		gpio_direction_output(spild->gpio_ipc_mrdy, SPI_GPIOLEVEL_LOW);
 
 		/* change state SPI_STATE_TX_WAIT to
 			SPI_MAIN_STATE_TX_SENDING */
@@ -420,8 +449,6 @@ static void spi_tx_work(void)
 			pr_err("[SPI] spi_dev_send fail\n");
 
 			/* add cp reset when spi sync fail */
-			iod = link_get_iod_with_format(&spild->ld, IPC_FMT);
-
 			if (iod)
 				iod->modem_state_changed(iod,
 						STATE_CRASH_RESET);
@@ -429,7 +456,7 @@ static void spi_tx_work(void)
 
 		spild->spi_state = SPI_STATE_TX_TERMINATE;
 
-		gpio_set_value(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_LOW);
+		gpio_direction_output(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_LOW);
 
 		/* change state SPI_MAIN_STATE_TX_SENDING to SPI_STATE_IDLE */
 		spild->spi_state = SPI_STATE_IDLE;
@@ -515,7 +542,7 @@ int spi_buff_read(struct spi_link_device *spild)
 		spi_cur_data = spi_packet + spi_packet_cur_pos;
 
 		/* enqueue spi data */
-		skb = alloc_skb(data_length, GFP_ATOMIC);
+		skb = alloc_skb(data_length, GFP_KERNEL);
 		if (unlikely(!skb)) {
 			pr_err("%s %s\n",
 				"[SPI] ERROR : spi_buff_read:",
@@ -553,6 +580,15 @@ static void spi_rx_work(void)
 	if (!spild)
 		pr_err("[LNK/E] <%s> dpld == NULL\n", __func__);
 
+	iod = link_get_iod_with_format(&spild->ld, IPC_FMT);
+	if (!iod) {
+		mif_err("no iodevice for modem control\n");
+		return;
+	}
+
+	if (iod->mc->phone_state == STATE_CRASH_EXIT)
+		return;
+
 	if (!wake_lock_active(&spild->spi_wake_lock) ||
 		gpio_get_value(spild->gpio_ipc_srdy) == SPI_GPIOLEVEL_LOW ||
 		get_console_suspended() ||
@@ -562,7 +598,7 @@ static void spi_rx_work(void)
 	spild->spi_state = SPI_STATE_RX_WAIT;
 	spild->spi_timer_rx_state = SPI_STATE_TIME_START;
 
-	gpio_set_value(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_HIGH);
+	gpio_direction_output(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_HIGH);
 	/* Start TX timer */
 	spild->spi_rx_timer.expires =
 		jiffies + ((SPI_TIMER_RX_WAIT_TIME * HZ) / 1000);
@@ -577,7 +613,7 @@ static void spi_rx_work(void)
 
 			spild->spi_timer_rx_state = SPI_STATE_TIME_START;
 
-			gpio_set_value(spild->gpio_ipc_sub_mrdy,
+			gpio_direction_output(spild->gpio_ipc_sub_mrdy,
 				SPI_GPIOLEVEL_LOW);
 
 			/* change state SPI_MAIN_STATE_RX_WAIT */
@@ -606,7 +642,7 @@ static void spi_rx_work(void)
 		/* parsing SPI packet */
 		if (spi_buff_read(spild) > 0) {
 			/* call function for send data to IPC, RAW, RFS */
-			for (i = 0; i < spild->max_ipc_dev; i++) {
+			for (i = 0; i < ld->max_ipc_dev; i++) {
 				iod = spild->iod[i];
 				while ((skb = skb_dequeue(&spild->skb_rxq[i]))
 					 != NULL) {
@@ -623,8 +659,6 @@ static void spi_rx_work(void)
 			"spi sync failed");
 
 		/* add cp reset when spi sync fail */
-		iod = link_get_iod_with_format(&spild->ld, IPC_FMT);
-
 		if (iod)
 			iod->modem_state_changed(iod,
 					STATE_CRASH_RESET);
@@ -632,11 +666,39 @@ static void spi_rx_work(void)
 
 	spild->spi_state = SPI_STATE_RX_TERMINATE;
 
-	gpio_set_value(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_LOW);
+	gpio_direction_output(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_LOW);
 
 	/* change state SPI_MAIN_STATE_RX_WAIT to SPI_STATE_IDLE */
 	spild->spi_state = SPI_STATE_IDLE;
 	spi_start_data_send();
+}
+
+
+static int spi_init_ipc(struct spi_link_device *spild)
+{
+	struct link_device *ld = &spild->ld;
+
+	int i;
+
+	/* Make aliases to each IO device */
+	for (i = 0; i < MAX_DEV_FORMAT; i++)
+		spild->iod[i] = link_get_iod_with_format(ld, i);
+
+	spild->iod[IPC_RAW] = spild->iod[IPC_MULTI_RAW];
+
+	/* List up the IO devices connected to each IPC channel */
+	for (i = 0; i < MAX_DEV_FORMAT; i++) {
+		if (spild->iod[i])
+			pr_err("[LNK] <%s:%s> spild->iod[%d]->name = %s\n",
+				__func__, ld->name, i, spild->iod[i]->name);
+		else
+			pr_err("[LNK] <%s:%s> No spild->iod[%d]\n",
+				__func__, ld->name, i);
+	}
+
+	ld->mode = LINK_MODE_IPC;
+
+	return 0;
 }
 
 unsigned int sprd_crc_calc(char *buf_ptr, unsigned int len)
@@ -745,7 +807,7 @@ int encode_msg(struct sprd_image_buf *img, int bcrc)
 		dest_len++;
 	}
 
-	dest_ptr = kmalloc(dest_len + 2, GFP_ATOMIC);
+	dest_ptr = kmalloc(dest_len + 2, GFP_KERNEL);
 	/* Memory Allocate fail.*/
 	if (dest_ptr == NULL)
 		return -ENOMEM;
@@ -828,7 +890,7 @@ int decode_msg(struct sprd_image_buf *img, int bcrc)
 	}
 
 	/* Allocate meomory for decoded message*/
-	dest_ptr = kmalloc(dest_len, GFP_ATOMIC);
+	dest_ptr = kmalloc(dest_len, GFP_KERNEL);
 	/* Memory allocate fail.*/
 	if (dest_ptr == NULL)
 		return -ENOMEM;
@@ -1020,7 +1082,7 @@ static int spi_send_modem_bin_xmit_img
 
 	u16 sprd_packet_size = SPRD_BLOCK_SIZE;
 
-	sprd_img.tx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_ATOMIC);
+	sprd_img.tx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_KERNEL);
 	if (!sprd_img.tx_b) {
 		pr_err("(%d) tx_b kmalloc fail.",
 			__LINE__);
@@ -1028,7 +1090,7 @@ static int spi_send_modem_bin_xmit_img
 	}
 	memset(sprd_img.tx_b, 0, SPRD_BLOCK_SIZE*2);
 
-	sprd_img.rx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_ATOMIC);
+	sprd_img.rx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_KERNEL);
 	if (!sprd_img.rx_b) {
 		pr_err("(%d) rx_b kmalloc fail.",
 			__LINE__);
@@ -1037,7 +1099,7 @@ static int spi_send_modem_bin_xmit_img
 	}
 	memset(sprd_img.rx_b, 0, SPRD_BLOCK_SIZE*2);
 
-	sprd_img.encoded_tx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_ATOMIC);
+	sprd_img.encoded_tx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_KERNEL);
 	if (!sprd_img.encoded_tx_b) {
 		pr_err("(%d) encoded_tx_b kmalloc fail.",
 			__LINE__);
@@ -1046,7 +1108,7 @@ static int spi_send_modem_bin_xmit_img
 	}
 	memset(sprd_img.encoded_tx_b, 0, SPRD_BLOCK_SIZE*2);
 
-	sprd_img.decoded_rx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_ATOMIC);
+	sprd_img.decoded_rx_b = kmalloc(SPRD_BLOCK_SIZE*2, GFP_KERNEL);
 	if (!sprd_img.decoded_rx_b) {
 		pr_err("(%d) encoded_rx_b kmalloc fail.",
 			__LINE__);
@@ -1239,9 +1301,18 @@ err3:
 
 static void spi_send_modem_bin(struct work_struct *send_modem_w)
 {
+	struct spi_link_device *spild;
+	struct io_device *iod;
 	int retval;
 	struct image_buf img;
 	unsigned long tick1, tick2 = 0;
+
+	spild = p_spild;
+	iod = link_get_iod_with_format(&spild->ld, IPC_FMT);
+	if (!iod) {
+		mif_err("no iodevice for modem control\n");
+		return;
+	}
 
 	tick1 = jiffies_to_msecs(jiffies);
 
@@ -1285,16 +1356,25 @@ static void spi_send_modem_bin(struct work_struct *send_modem_w)
 	tick2 = jiffies_to_msecs(jiffies);
 	pr_info("Downloading takes %lu msec\n", (tick2-tick1));
 
-	complete_all(&p_spild->ril_init);
+	spi_init_ipc(p_spild);
+
 	sprd_boot_done = 1;
 	p_spild->ril_send_cnt = 0;
+	p_spild->spi_state = SPI_STATE_IDLE;
 
+	if (iod)
+		iod->modem_state_changed(iod,
+			STATE_ONLINE);
+	return;
 err:
+	if (iod)
+		iod->modem_state_changed(iod,
+			STATE_OFFLINE);
 	return;
 
 }
 
-static inline int _request_mem(struct ipc_spi *od)
+static inline int _request_mem(struct spi_v_buff *od)
 {
 	if (!p_spild->p_virtual_buff) {
 		od->mmio = vmalloc(od->size);
@@ -1320,7 +1400,7 @@ void spi_tx_timer_callback(unsigned long param)
 {
 	if (p_spild->spi_state == SPI_STATE_TX_WAIT) {
 		p_spild->spi_timer_tx_state = SPI_STATE_TIME_OVER;
-		pr_err("[SPI] spi_tx_timer_callback -timer expires\n");
+		pr_debug("[SPI] spi_tx_timer_callback -timer expires\n");
 	}
 }
 
@@ -1328,7 +1408,7 @@ void spi_rx_timer_callback(unsigned long param)
 {
 	if (p_spild->spi_state == SPI_STATE_RX_WAIT) {
 		p_spild->spi_timer_rx_state = SPI_STATE_TIME_OVER;
-		pr_err("[SPI] spi_rx_timer_callback -timer expires\n");
+		pr_debug("[SPI] spi_rx_timer_callback -timer expires\n");
 	}
 }
 
@@ -1381,96 +1461,37 @@ static void spi_work(struct work_struct *work)
 	}
 }
 
-static int spi_init_ipc(struct spi_link_device *spild)
+static int link_pm_notifier_event(struct notifier_block *this,
+				unsigned long event, void *ptr)
 {
-	struct link_device *ld = &spild->ld;
+	struct io_device *iod;
+	struct link_pm_data *pm_data =
+			container_of(this, struct link_pm_data,	pm_notifier);
 
-	int i;
-
-	/* Make aliases to each IO device */
-	for (i = 0; i < MAX_DEV_FORMAT; i++)
-		spild->iod[i] = link_get_iod_with_format(ld, i);
-
-	spild->iod[IPC_RAW] = spild->iod[IPC_MULTI_RAW];
-
-	/* List up the IO devices connected to each IPC channel */
-	for (i = 0; i < MAX_DEV_FORMAT; i++) {
-		if (spild->iod[i])
-			pr_err("[LNK] <%s:%s> spild->iod[%d]->name = %s\n",
-				__func__, ld->name, i, spild->iod[i]->name);
-		else
-			pr_err("[LNK] <%s:%s> No spild->iod[%d]\n",
-				__func__, ld->name, i);
+	iod = link_get_iod_with_format(&pm_data->spild->ld, IPC_FMT);
+	if (!iod) {
+		pr_err("no iodevice for modem control\n");
+		return NOTIFY_BAD;
 	}
 
-	ld->mode = LINK_MODE_IPC;
+	if (!gpio_get_value(iod->mc->gpio_phone_active))
+		return NOTIFY_DONE;
 
-	return 0;
-}
+	switch (event) {
+	case PM_SUSPEND_PREPARE:
+		/* set TD PDA Active High if previous state was LPA */
+		mif_info("TD PDA active low to LPA suspend spot\n");
+		gpio_direction_output(iod->mc->gpio_pda_active, 0);
 
-static int spi_thread(void *data)
-{
-	struct spi_link_device *spild = (struct spi_link_device *)data;
-
-	if (lpcharge == 1) {
-		pr_err("[LPM MODE] spi_thread_exit!\n");
-		return 0;
+		return NOTIFY_OK;
+	case PM_POST_SUSPEND:
+		/* LPA to Kernel suspend and User Freezing task fail resume,
+		restore to LPA GPIO states. */
+		mif_info("TD PDA active High to LPA GPIO state\n");
+		gpio_direction_output(iod->mc->gpio_pda_active, 1);
+		return NOTIFY_OK;
 	}
-
-	daemonize("spi_thread");
-
-	pr_info("[%s] spi_thread start.\n", __func__);
-	p_spild->boot_done = 1;
-
-	wait_for_completion(&p_spild->ril_init);
-
-	pr_info("[%s] ril_init completed.\n", __func__);
-
-	pr_info("<%s> wait 2 sec... srdy : %d\n",
-		__func__, gpio_get_value(spild->gpio_ipc_srdy));
-	msleep_interruptible(1700);
-
-	while (gpio_get_value(spild->gpio_ipc_srdy))
-		;
-	pr_info("(%s) cp booting... Done.\n", __func__);
-
-	spi_init_ipc(spild);
-
-	pr_info("[spi_thread] Start IPC Communication. SRDY : %d\n",
-		gpio_get_value(spild->gpio_ipc_srdy));
-
-	/* CP booting is already completed, just set submrdy to high  */
-	if (gpio_get_value(spild->gpio_ipc_sub_srdy) == SPI_GPIOLEVEL_HIGH) {
-		gpio_set_value(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_HIGH);
-		pr_err("[spi_thread] CP booting is already completed\n");
-	}
-	/* CP booting is not completed.
-	set submrdy to high and wait until subsrdy is high */
-	else {
-		pr_err("[spi_thread] CP booting is not completed. wait...\n");
-
-		gpio_set_value(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_HIGH);
-		do {
-			msleep_interruptible(5);
-		} while (gpio_get_value(spild->gpio_ipc_sub_srdy) ==
-			SPI_GPIOLEVEL_LOW);
-
-		pr_err("[spi_thread] CP booting is done...\n");
-	}
-
-	if (p_spild->spi_is_restart)
-		msleep_interruptible(100);
-	else
-		msleep_interruptible(30);
-
-	gpio_set_value(spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_LOW);
-
-	pr_info("(%s) spi sync done.\n", __func__);
-
-	spild->spi_state = SPI_STATE_IDLE;
-	p_spild->spi_is_restart = 0;
-
-	return 0;
+	return NOTIFY_DONE;
 }
 
 static int spi_probe(struct spi_device *spi)
@@ -1512,8 +1533,7 @@ static struct spi_driver spi_driver = {
 static int spi_link_init(void)
 {
 	int ret;
-	struct ipc_spi *od;
-	struct task_struct *th;
+	struct spi_v_buff *od;
 	struct link_device *ld = &p_spild->ld;
 
 	p_spild->gpio_modem_bin_srdy = p_spild->gpio_ipc_srdy;
@@ -1522,7 +1542,7 @@ static int spi_link_init(void)
 		p_spild->gpio_ipc_mrdy, p_spild->gpio_modem_bin_srdy,
 		gpio_get_value(p_spild->gpio_ipc_srdy));
 
-	od = kzalloc(sizeof(struct ipc_spi), GFP_KERNEL);
+	od = kzalloc(sizeof(struct spi_v_buff), GFP_KERNEL);
 	if (!od) {
 		pr_err("(%d) failed to allocate device\n", __LINE__);
 		ret = -ENOMEM;
@@ -1537,7 +1557,6 @@ static int spi_link_init(void)
 	if (ret)
 		goto err;
 
-	init_completion(&p_spild->ril_init);
 	sema_init(&p_spild->srdy_sem, 0);
 
 	INIT_WORK(&p_spild->send_modem_w,
@@ -1563,12 +1582,7 @@ static int spi_link_init(void)
 	if (ret)
 		goto err;
 
-	th = kthread_create(spi_thread, (void *)p_spild, "spi_thread");
-	if (IS_ERR(th)) {
-		pr_err("kernel_thread() failed\n");
-		goto err;
-	}
-	wake_up_process(th);
+	p_spild->boot_done = 1;
 
 	pr_info("[%s] Done\n", __func__);
 	return 0;
@@ -1588,10 +1602,9 @@ void spi_set_restart(void)
 	pr_info("[SPI] spi_set_restart(spi_main_state=[%d])\n",
 		(int)p_spild->spi_state);
 
-	gpio_set_value(p_spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_LOW);
+	gpio_direction_output(p_spild->gpio_ipc_sub_mrdy, SPI_GPIOLEVEL_LOW);
 
 	p_spild->spi_state = SPI_STATE_END;
-	p_spild->spi_is_restart = 1;
 
 	/* Flush SPI work queue */
 	flush_workqueue(p_spild->spi_wq);
@@ -1634,6 +1647,35 @@ exit:
 	return retval;
 }
 EXPORT_SYMBOL(spi_thread_restart);
+
+static int spi_link_pm_init(struct spi_link_device *spild,
+	struct platform_device *pdev)
+{
+	struct modem_data *pdata =
+			(struct modem_data *)pdev->dev.platform_data;
+	struct modemlink_pm_data *pm_pdata;
+	struct link_pm_data *pm_data =
+			kzalloc(sizeof(struct link_pm_data), GFP_KERNEL);
+
+	if (!pdata || !pdata->link_pm_data) {
+		mif_err("platform data is NULL\n");
+		return -EINVAL;
+	}
+	pm_pdata = pdata->link_pm_data;
+
+	if (!pm_data) {
+		mif_err("link_pm_data is NULL\n");
+		return -ENOMEM;
+	}
+
+	pm_data->spild = spild;
+	spild->link_pm_data = pm_data;
+
+	pm_data->pm_notifier.notifier_call = link_pm_notifier_event;
+	register_pm_notifier(&pm_data->pm_notifier);
+
+	return 0;
+}
 
 struct link_device *spi_create_link_device(struct platform_device *pdev)
 {
@@ -1689,9 +1731,9 @@ struct link_device *spi_create_link_device(struct platform_device *pdev)
 	}
 
 	spild->spi_state = SPI_STATE_END;
-	spild->max_ipc_dev = IPC_RFS+1; /* FMT, RAW, RFS */
+	ld->max_ipc_dev = (IPC_RFS + 1);	/* FMT, RAW, RFS */
 
-	for (i = 0; i < spild->max_ipc_dev; i++)
+	for (i = 0; i < ld->max_ipc_dev; i++)
 		skb_queue_head_init(&spild->skb_rxq[i]);
 
 	/* Prepare a clean buffer for SPI access */
@@ -1737,6 +1779,11 @@ struct link_device *spi_create_link_device(struct platform_device *pdev)
 		pr_err("spi_register_driver() fail : %d\n", ret);
 		goto err;
 	}
+
+	/* create link pm device */
+	ret = spi_link_pm_init(spild, pdev);
+	if (ret)
+		goto err;
 
 	/* Create SPI device */
 	ret = spi_link_init();

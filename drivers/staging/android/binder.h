@@ -48,13 +48,13 @@ enum {
  */
 struct flat_binder_object {
 	/* 8 bytes for large_flat_header. */
-	__u32		type;
-	__u32		flags;
+	unsigned long		type;
+	unsigned long		flags;
 
 	/* 8 bytes of data. */
 	union {
-		void __user	*binder;	/* local object */
-		__u32	    handle;		/* remote object */
+		void		*binder;	/* local object */
+		signed long	handle;		/* remote object */
 	};
 
 	/* extra data associated with local object */
@@ -67,18 +67,18 @@ struct flat_binder_object {
  */
 
 struct binder_write_read {
-	size_t write_size;	/* bytes to write */
-	size_t write_consumed;	/* bytes consumed by driver */
+	signed long	write_size;	/* bytes to write */
+	signed long	write_consumed;	/* bytes consumed by driver */
 	unsigned long	write_buffer;
-	size_t read_size;	/* bytes to read */
-	size_t read_consumed;	/* bytes consumed by driver */
+	signed long	read_size;	/* bytes to read */
+	signed long	read_consumed;	/* bytes consumed by driver */
 	unsigned long	read_buffer;
 };
 
 /* Use with BINDER_VERSION, driver fills in fields. */
 struct binder_version {
 	/* driver protocol version -- increment with incompatible change */
-	__s32       protocol_version;
+	signed long	protocol_version;
 };
 
 /* This is the current protocol version. */
@@ -119,7 +119,7 @@ struct binder_transaction_data {
 	 * identifying the target and contents of the transaction.
 	 */
 	union {
-		__u32	handle;	/* target descriptor of command transaction */
+		size_t	handle;	/* target descriptor of command transaction */
 		void	*ptr;	/* target descriptor of return transaction */
 	} target;
 	void		*cookie;	/* target object cookie */
@@ -153,8 +153,8 @@ struct binder_ptr_cookie {
 };
 
 struct binder_pri_desc {
-	__s32 priority;
-	__u32 desc;
+	int priority;
+	int desc;
 };
 
 struct binder_pri_ptr_cookie {
